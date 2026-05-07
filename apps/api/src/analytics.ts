@@ -1,4 +1,4 @@
-export function parseHighRep(target: string): number | null {
+﻿export function parseHighRep(target: string): number | null {
   const numbers = target.match(/\d+/g)?.map(Number) ?? [];
   return numbers.length ? Math.max(...numbers) : null;
 }
@@ -29,4 +29,9 @@ export function summarizeVolume(logs: Array<{ cycleDate: Date; weightKg: unknown
   }
 
   return { total, byDay, byExercise, byMuscle };
+}
+
+export function parseLowRep(target: string): number | null {
+  const numbers = target.match(/\d+/g)?.map(Number) ?? [];
+  return numbers.length ? Math.min(...numbers) : null;
 }

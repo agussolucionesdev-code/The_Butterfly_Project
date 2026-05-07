@@ -1,8 +1,8 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { formatDateOnly, getCycleDay, isFutureCycleDay, parseDateOnly } from '@butterfly/shared';
 import { prisma } from './db.js';
-import { parseHighRep, summarizeVolume } from './analytics.js';
+import { parseHighRep, parseLowRep, summarizeVolume } from './analytics.js';
 
 const setLogSchema = z.object({
   exerciseId: z.string().min(1),
@@ -215,7 +215,11 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post('/api/progression/:id/accept', async (request, reply) => {
     const params = z.object({ id: z.string() }).safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: 'Invalid suggestion id.' });
-    const suggestion = await prisma.progressionSuggestion.update({ where: { id: params.data.id }, data: { status: 'accepted', resolvedAt: new Date() } });
+    const suggestion = await prisma.progressionSuggestion.update({ where: { id: params.data.id }, data: { status: 'accepted', resolvedAt: new Date() }, include: { exercise: { include: { logs: { orderBy: [{ cycleDate: 'desc' }, { setNumber: 'asc' }], take: 10 } } } } });
+    const latestWeight = Math.max(...suggestion.exercise.logs.map((log) => Number(log.weightKg)), 0);
+    const increment = suggestion.exercise.name.includes('Manc.') || suggestion.exercise.name.includes('Mancuerna') ? 1 : (suggestion.exercise.rpe === 'FALLO' ? 1 : 2.5);
+    const plannedRepGoal = parseLowRep(suggestion.exercise.targetReps);
+    await prisma.exercise.update({ where: { id: suggestion.exerciseId }, data: { plannedWeightKg: latestWeight > 0 ? latestWeight + increment : null, plannedRepGoal } });
     return { suggestion };
   });
 
@@ -277,5 +281,6 @@ export async function registerRoutes(app: FastifyInstance) {
     return { plan, days: await getPlanDays(true) };
   });
 }
+
 
 

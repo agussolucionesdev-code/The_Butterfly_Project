@@ -1,4 +1,4 @@
-export interface ExerciseMetadata {
+﻿export interface ExerciseMetadata {
   id: string;
   exerciseId: string;
   kind: 'compound' | 'isolation';
@@ -23,6 +23,8 @@ export interface Exercise {
   breath: string;
   warmup: boolean;
   active?: boolean;
+  plannedWeightKg?: number | null;
+  plannedRepGoal?: number | null;
   order: number;
   metadata?: ExerciseMetadata | null;
 }
@@ -78,3 +80,4 @@ export interface BodyMetric {
   proteinGrams: number;
   notes?: string | null;
 }
+

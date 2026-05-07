@@ -29,6 +29,8 @@ model Exercise {
   breath        String
   warmup        Boolean     @default(false)
   active        Boolean     @default(true)
+  plannedWeightKg Decimal?  @db.Decimal(6, 2)
+  plannedRepGoal Int?
   order         Int
   logs          SetLog[]
   metadata      ExerciseMetadata?
