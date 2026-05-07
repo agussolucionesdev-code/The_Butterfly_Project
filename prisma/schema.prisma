@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model TrainingDay {
+  id        String     @id @default(cuid())
+  cycleDay Int        @unique
+  name      String
+  exercises Exercise[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Exercise {
+  id            String      @id @default(cuid())
+  trainingDayId String
+  trainingDay   TrainingDay @relation(fields: [trainingDayId], references: [id], onDelete: Cascade)
+  sourceId      String      @unique
+  name          String
+  sets          Int
+  targetReps    String
+  rpe           String
+  restSeconds   Int
+  breath        String
+  warmup        Boolean     @default(false)
+  order         Int
+  logs          SetLog[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([trainingDayId, order])
+}
+
+model SetLog {
+  id          String   @id @default(cuid())
+  exerciseId  String
+  exercise    Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  cycleDay    Int
+  cycleDate   DateTime @db.Date
+  setNumber   Int
+  weightKg    Decimal  @db.Decimal(6, 2)
+  reps        Int
+  completedAt DateTime @default(now())
+
+  @@unique([exerciseId, cycleDate, setNumber])
+  @@index([cycleDate, cycleDay])
+}

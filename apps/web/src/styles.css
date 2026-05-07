@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; background: #050505; }
+body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #050505; }
+
+@layer components {
+  .btn-primary { @apply rounded border border-volt bg-volt px-4 py-4 font-mono font-bold uppercase tracking-widest text-obsidian transition active:scale-[0.99]; }
+  .btn-secondary { @apply rounded border border-charcoal bg-carbon px-4 py-4 font-mono font-bold uppercase tracking-widest text-white transition hover:border-volt; }
+  .metric { @apply rounded border border-charcoal bg-carbon p-3; }
+  .metric span { @apply block text-steel uppercase tracking-widest text-xs; }
+  .metric strong { @apply mt-1 block font-mono text-white; }
+  .field { @apply grid gap-2 text-sm uppercase tracking-widest text-steel; }
+  .field input { @apply rounded border border-charcoal bg-obsidian p-4 text-2xl font-mono text-white outline-none focus:border-volt; }
+}

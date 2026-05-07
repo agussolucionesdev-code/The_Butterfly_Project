@@ -1,0 +1,5 @@
+import type { SetLog, TrainingDay } from './types';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+export async function getToday(): Promise<{ cycleDay: number; cycleDate: string; day: TrainingDay }> { const r = await fetch(`${API_URL}/api/training/today`); if (!r.ok) throw new Error('Could not load today training.'); return r.json(); }
+export async function getLogs(cycleDate: string): Promise<{ logs: SetLog[] }> { const r = await fetch(`${API_URL}/api/logs?cycleDate=${cycleDate}`); if (!r.ok) throw new Error('Could not load logs.'); return r.json(); }
+export async function saveSet(input: { exerciseId: string; cycleDay: number; cycleDate: string; setNumber: number; weightKg: number; reps: number; }): Promise<{ log: SetLog; restSeconds: number; next: unknown }> { const r = await fetch(`${API_URL}/api/logs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); if (!r.ok) throw new Error('Set could not be saved. Weight and reps are mandatory.'); return r.json(); }
