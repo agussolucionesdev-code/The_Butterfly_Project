@@ -28,8 +28,11 @@ model Exercise {
   restSeconds   Int
   breath        String
   warmup        Boolean     @default(false)
+  active        Boolean     @default(true)
   order         Int
   logs          SetLog[]
+  metadata      ExerciseMetadata?
+  suggestions   ProgressionSuggestion[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -45,8 +48,74 @@ model SetLog {
   setNumber   Int
   weightKg    Decimal  @db.Decimal(6, 2)
   reps        Int
+  rir         Int?
+  actualRpe   Int?
+  tempo       String?
+  painLevel   Int?
+  notes       String?
+  restTakenSeconds Int?
   completedAt DateTime @default(now())
 
   @@unique([exerciseId, cycleDate, setNumber])
   @@index([cycleDate, cycleDay])
+}
+
+model PlanTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserPlan {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}
+
+model ExerciseMetadata {
+  id                    String   @id @default(cuid())
+  exerciseId            String   @unique
+  exercise              Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  kind                  String
+  primaryMuscles        String[]
+  secondaryMuscles      String[]
+  stabilizerMuscles     String[]
+  videoUrl              String
+  instructions          String[]
+  commonMistakes        String[]
+  technicalCues         String[]
+  overloadRecommendation String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model BodyMetric {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date @unique
+  bodyWeightKg Decimal @db.Decimal(6, 2)
+  proteinGrams Int
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProgressionSuggestion {
+  id              String   @id @default(cuid())
+  exerciseId      String
+  exercise        Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  reason          String
+  action          String
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  resolvedAt      DateTime?
+
+  @@index([status, createdAt])
+  @@index([exerciseId, status])
 }
