@@ -55,6 +55,38 @@ function lowEntries(record: Record<string, number>, count = 3) {
   return Object.entries(record).sort((a, b) => a[1] - b[1]).slice(0, count);
 }
 
+function dayLabel(cycleDay: number) {
+  return `Dia ${cycleDay}`;
+}
+
+function buildYoutubeSearchUrl(exerciseName: string) {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${exerciseName} tecnica ejercicio hipertrofia`)}`;
+}
+
+function buildExrxSearchUrl(exerciseName: string) {
+  return `https://www.google.com/search?q=${encodeURIComponent(`site:exrx.net ${exerciseName}`)}`;
+}
+
+function buildAceSearchUrl(exerciseName: string) {
+  return `https://www.google.com/search?q=${encodeURIComponent(`site:acefitness.org ${exerciseName}`)}`;
+}
+
+function resolveVideoResource(videoUrl: string | null | undefined, exerciseName: string) {
+  const fallbackWatchUrl = buildYoutubeSearchUrl(exerciseName);
+
+  if (!videoUrl || videoUrl.includes('youtube.com/embed?listType=search')) {
+    return {
+      embedUrl: null,
+      watchUrl: fallbackWatchUrl
+    };
+  }
+
+  return {
+    embedUrl: videoUrl,
+    watchUrl: fallbackWatchUrl
+  };
+}
+
 function AnatomyMap({ exercise }: { exercise: Exercise | null }) {
   const primary = new Set(exercise?.metadata?.primaryMuscles ?? []);
   const secondary = new Set(exercise?.metadata?.secondaryMuscles ?? []);
@@ -131,6 +163,7 @@ export function App() {
   const lastEquivalentSet = useMemo(() => history?.latestLogs.find((log) => log.setNumber === store.setNumber), [history, store.setNumber]);
   const recommendedWeight = exercise?.plannedWeightKg ?? null;
   const recommendedReps = exercise?.plannedRepGoal ?? null;
+  const videoResource = resolveVideoResource(exercise?.metadata?.videoUrl, exercise?.name ?? '');
 
   async function refreshCoachData(currentExercise = exercise) {
     const [volumeResponse, progressionResponse] = await Promise.all([
@@ -402,11 +435,25 @@ export function App() {
             </div>
           </div>
           <div className="grid grid-cols-7 gap-2 mt-5">
-            {Array.from({ length: 7 }, (_, index) => index + 1).map((day) => (
-              <button key={day} type="button" disabled={day > currentCycleDay || switchingDay} onClick={() => handleDaySelection(day)} className={`day-pill ${day === viewedCycleDay ? 'day-pill-active' : ''} ${day > currentCycleDay ? 'day-pill-locked' : ''}`}>
-                {day > currentCycleDay ? <Lock size={14} /> : day}
-              </button>
-            ))}
+            {Array.from({ length: 7 }, (_, index) => index + 1).map((day) => {
+              const locked = day > currentCycleDay;
+              const selected = day === viewedCycleDay;
+
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  title={`${dayLabel(day)}${locked ? ' - bloqueado' : day === currentCycleDay ? ' - disponible hoy' : ' - historial disponible'}`}
+                  aria-label={`${dayLabel(day)}${locked ? ' bloqueado' : ''}`}
+                  disabled={locked || switchingDay}
+                  onClick={() => handleDaySelection(day)}
+                  className={`day-pill flex min-h-14 flex-col items-center justify-center gap-1 ${selected ? 'day-pill-active' : ''} ${locked ? 'day-pill-locked' : ''}`}
+                >
+                  <span className="font-mono text-sm">{locked ? <Lock size={14} /> : day}</span>
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-steel">{dayLabel(day)}</span>
+                </button>
+              );
+            })}
           </div>
         </header>
 
@@ -425,7 +472,7 @@ export function App() {
 
         {activeTab === 'dashboard' && (
           <section className="grid gap-4 md:grid-cols-3">
-            <div className="metric"><span>Peso hacia 83 kg</span><strong>{latestMetric?.bodyWeightKg ?? 77.78} kg</strong><div className="h-2 bg-obsidian rounded mt-3 overflow-hidden"><div className="h-full bg-volt" style={{ width: `${bodyProgress}%` }} /></div></div>
+            <div className="metric"><span>Peso hacia 83 kg</span><strong>{latestMetric?.bodyWeightKg ?? 77.78} kg</strong><div className="h-2 bg-obsidian rounded mt-3 overflow-hidden"><div className="h-full bg-volt" style={{ width: `${bodyProgress}%` }} /></div><p className="mt-2 text-xs text-steel">{bodyProgress.toFixed(0)}% del camino hacia 83 kg.</p></div>
             <div className="metric"><span>Proteina hoy</span><strong>{latestMetric?.proteinGrams ?? 0}g / 160-175g</strong></div>
             <div className="metric"><span>Volumen semanal</span><strong>{(volume?.total ?? 0).toFixed(0)} kg</strong></div>
 
@@ -583,7 +630,18 @@ export function App() {
               <section className="border border-charcoal bg-carbon p-4 rounded">
                 <h3 className="font-mono text-volt flex gap-2"><BookOpen /> Guia tecnica</h3>
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mt-3">Video</p>
-                <iframe title={`${exercise.name} video`} src={exercise.metadata?.videoUrl} className="mt-2 aspect-video w-full rounded border border-charcoal" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
+                {videoResource.embedUrl ? (
+                  <iframe title={`${exercise.name} video`} src={videoResource.embedUrl} className="mt-2 aspect-video w-full rounded border border-charcoal" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
+                ) : (
+                  <div className="mt-2 rounded border border-charcoal bg-obsidian p-4">
+                    <p className="text-sm text-steel">Todavia no hay un embed confiable para este ejercicio. En vez de mostrar un video roto, te dejo accesos tecnicos utiles.</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <a className="btn-tertiary" href={videoResource.watchUrl} target="_blank" rel="noreferrer">Buscar video</a>
+                      <a className="btn-tertiary" href={buildExrxSearchUrl(exercise.name)} target="_blank" rel="noreferrer">Ver ExRx</a>
+                      <a className="btn-tertiary" href={buildAceSearchUrl(exercise.name)} target="_blank" rel="noreferrer">Ver ACE</a>
+                    </div>
+                  </div>
+                )}
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Cues</p>
                 <ul className="list-disc pl-5 text-sm text-steel">{exercise.metadata?.technicalCues.map((cue) => <li key={cue}>{cue}</li>)}</ul>
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Errores comunes</p>
@@ -591,8 +649,9 @@ export function App() {
               </section>
               <section className="border border-charcoal bg-carbon p-4 rounded">
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Up next</p>
-                <p className="text-white font-medium">{store.setNumber < exercise.sets ? `Repeat ${exercise.name}` : nextExerciseName}</p>
-                <p className="text-steel text-sm mt-2">Ultima sesion: {history?.latestDate ?? 'sin datos previos'}</p>
+                <p className="text-white font-medium">{store.setNumber < exercise.sets ? `Repeti ${exercise.name}` : nextExerciseName}</p>
+                <p className="text-steel text-sm mt-2">{isViewingToday ? 'Sesion actual' : `Mirando historial del dia ${viewedCycleDay}`}</p>
+                <p className="text-steel text-sm mt-1">Ultima sesion: {history?.latestDate ?? 'sin datos previos'}</p>
                 {currentSuggestion && <div className="mt-3 flex gap-2"><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, true)}>Aceptar progreso</button><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, false)}>Posponer</button></div>}
               </section>
               <section className="border border-charcoal bg-carbon p-4 rounded">
