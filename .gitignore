@@ -10,3 +10,4 @@ coverage
 apps/web/.vercel
 
 .playwright-mcp/
+.vercel
