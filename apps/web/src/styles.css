@@ -8,9 +8,13 @@ body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #050505
 @layer components {
   .btn-primary { @apply rounded border border-volt bg-volt px-4 py-4 font-mono font-bold uppercase tracking-widest text-obsidian transition active:scale-[0.99]; }
   .btn-secondary { @apply rounded border border-charcoal bg-carbon px-4 py-4 font-mono font-bold uppercase tracking-widest text-white transition hover:border-volt; }
+  .btn-tertiary { @apply inline-flex items-center justify-center rounded border border-volt/40 bg-transparent px-3 py-2 font-mono text-xs font-bold uppercase tracking-widest text-volt transition hover:border-volt; }
   .metric { @apply rounded border border-charcoal bg-carbon p-3; }
   .metric span { @apply block text-steel uppercase tracking-widest text-xs; }
   .metric strong { @apply mt-1 block font-mono text-white; }
   .field { @apply grid gap-2 text-sm uppercase tracking-widest text-steel; }
   .field input { @apply rounded border border-charcoal bg-obsidian p-4 text-2xl font-mono text-white outline-none focus:border-volt; }
+  .day-pill { @apply h-10 grid place-items-center rounded border border-charcoal bg-transparent font-mono text-steel transition hover:border-volt disabled:cursor-not-allowed disabled:opacity-60; }
+  .day-pill-active { @apply border-volt text-volt bg-volt/10; }
+  .day-pill-locked { @apply text-steel/40; }
 }

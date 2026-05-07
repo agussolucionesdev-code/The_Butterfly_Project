@@ -13,4 +13,10 @@ describe('workout store', () => {
     expect(useWorkoutStore.getState().setNumber).toBe(2);
     expect(useWorkoutStore.getState().getPreviousSet()?.weightKg).toBe(80);
   });
+
+  it('never lets the timer go negative', () => {
+    useWorkoutStore.getState().startTimer(20);
+    useWorkoutStore.getState().addTimerSeconds(-50);
+    expect(useWorkoutStore.getState().timerSeconds).toBe(0);
+  });
 });
