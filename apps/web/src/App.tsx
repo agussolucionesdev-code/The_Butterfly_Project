@@ -1,6 +1,6 @@
 import { Activity, BarChart3, BookOpen, ChevronLeft, ChevronRight, Clock3, Lock, Plus, RotateCcw, Save, Target, Timer, TrendingUp, Zap } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { acceptProgression, getActivePlan, getBodyMetrics, getDay, getExerciseHistory, getLogs, getProgressionSuggestions, getToday, getVolumeAnalytics, rejectProgression, resetPlanToTemplate, saveActivePlan, saveBodyMetric, saveSet } from './api';
+import { acceptProgression, getActivePlan, getBodyMetrics, getDay, getExerciseHistory, getLogs, getProgressionSuggestions, getToday, getVolumeAnalytics, rejectProgression, resetDayLogs, resetPlanToTemplate, saveActivePlan, saveBodyMetric, saveSet } from './api';
 import { useWorkoutStore } from './store/workoutStore';
 import type { BodyMetric, Exercise, ExerciseHistory, ProgressionSuggestion, TrainingDay, VolumeAnalytics } from './types';
 import { getEstimatedVolume, getWorkoutProgress, resolveCycleDate } from './utils/workout';
@@ -93,7 +93,7 @@ function AnatomyMap({ exercise }: { exercise: Exercise | null }) {
   const fill = (muscle: string) => primary.has(muscle) ? '#CCFF00' : secondary.has(muscle) ? '#94A3B8' : '#1A1A1A';
 
   return (
-    <div className="rounded border border-charcoal bg-obsidian p-3">
+    <div className="surface-card p-3">
       <p className="text-xs uppercase tracking-[0.25em] text-steel mb-2">Mapa muscular</p>
       <svg viewBox="0 0 220 320" className="mx-auto h-72 w-full max-w-[260px]">
         <circle cx="110" cy="28" r="18" fill="#1A1A1A" stroke="#2A2A2A" />
@@ -135,6 +135,7 @@ export function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resettingDay, setResettingDay] = useState(false);
   const [switchingDay, setSwitchingDay] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('flow');
   const [history, setHistory] = useState<ExerciseHistory | null>(null);
@@ -164,6 +165,11 @@ export function App() {
   const recommendedWeight = exercise?.plannedWeightKg ?? null;
   const recommendedReps = exercise?.plannedRepGoal ?? null;
   const videoResource = resolveVideoResource(exercise?.metadata?.videoUrl, exercise?.name ?? '');
+  const remainingSets = Math.max(0, progress.totalSets - progress.completedSets);
+  const proteinToday = latestMetric?.proteinGrams ?? 0;
+  const proteinFloorGap = Math.max(0, 160 - proteinToday);
+  const proteinTopGap = Math.max(0, 175 - proteinToday);
+  const todayVolume = volume?.byDay?.[store.cycleDate] ?? 0;
 
   async function refreshCoachData(currentExercise = exercise) {
     const [volumeResponse, progressionResponse] = await Promise.all([
@@ -316,6 +322,31 @@ export function App() {
     await refreshCoachData();
   }
 
+  async function resetCurrentSession() {
+    const sessionLabel = isViewingToday ? 'la sesion de hoy' : `el dia ${viewedCycleDay}`;
+    if (!window.confirm(`Vas a borrar todos los sets guardados de ${sessionLabel} y volver a empezar desde cero. ¿Continuar?`)) return;
+
+    setResettingDay(true);
+    setError('');
+
+    try {
+      await resetDayLogs({ cycleDay: viewedCycleDay, cycleDate: store.cycleDate });
+      setWeightKg('');
+      setReps('');
+      setRir('');
+      setActualRpe('');
+      setPainLevel('0');
+      setNotes('');
+      await loadWorkoutForDay(viewedCycleDay);
+      await refreshCoachData();
+      setActiveTab('flow');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo reiniciar la sesion.');
+    } finally {
+      setResettingDay(false);
+    }
+  }
+
   function updatePlanExercise(dayIndex: number, exerciseIndex: number, patch: Partial<Exercise>) {
     setPlanDays((days) =>
       days.map((day, index) =>
@@ -379,16 +410,17 @@ export function App() {
   }
 
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-obsidian text-volt font-mono">Loading metamorphosis...</main>;
+    return <main className="grid min-h-screen place-items-center bg-obsidian text-volt font-mono">Cargando metamorfosis...</main>;
   }
 
   if (store.timerActive) {
     return (
-      <main className="min-h-screen bg-obsidian text-white p-6 flex flex-col items-center justify-center text-center">
-        <Timer className="text-volt mb-6" size={48} />
-        <p className="uppercase tracking-[0.4em] text-steel text-xs mb-3">Active recovery</p>
+      <main className="app-shell flex min-h-screen flex-col items-center justify-center p-6 text-center text-white">
+        <div className="hero-panel w-full max-w-3xl p-8">
+        <Timer className="mx-auto mb-6 text-volt" size={48} />
+        <p className="text-xs uppercase tracking-[0.4em] text-steel mb-3">Recuperacion activa</p>
         <h1 className="font-mono text-7xl text-volt mb-4">{formatTime(store.timerSeconds)}</h1>
-        <p className="text-steel mb-6 max-w-md">Next step: <strong className="text-white">{store.setNumber < (exercise?.sets ?? 0) ? `Set ${store.setNumber + 1}` : nextExerciseName}</strong></p>
+        <p className="mx-auto mb-6 max-w-md text-steel">Siguiente paso: <strong className="text-white">{store.setNumber < (exercise?.sets ?? 0) ? `Set ${store.setNumber + 1}` : nextExerciseName}</strong></p>
         <div className="grid grid-cols-3 gap-3 w-full max-w-md mb-4">
           {[-20, -15, -10, 10, 15, 20].map((seconds) => (
             <button key={seconds} className={`btn-secondary ${seconds < 0 ? 'text-red-200' : ''}`} onClick={() => store.addTimerSeconds(seconds)}>
@@ -396,43 +428,51 @@ export function App() {
             </button>
           ))}
         </div>
-        <div className="border border-charcoal bg-carbon rounded p-4 w-full max-w-md mb-4">
-          <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Custom timer</p>
+        <div className="surface-card mx-auto mb-4 w-full max-w-md p-4">
+          <p className="mb-3 text-xs uppercase tracking-[0.25em] text-steel">Timer manual</p>
           <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-            <label className="field text-left">Minutes<input value={timerMinutes} onChange={(event) => setTimerMinutes(event.target.value)} type="number" min="0" step="1" /></label>
+            <label className="field text-left">Minutos<input value={timerMinutes} onChange={(event) => setTimerMinutes(event.target.value)} type="number" min="0" step="1" /></label>
             <span className="font-mono text-2xl mt-6">:</span>
-            <label className="field text-left">Seconds<input value={timerSecondsInput} onChange={(event) => setTimerSecondsInput(event.target.value)} type="number" min="0" max="59" step="1" /></label>
+            <label className="field text-left">Segundos<input value={timerSecondsInput} onChange={(event) => setTimerSecondsInput(event.target.value)} type="number" min="0" max="59" step="1" /></label>
           </div>
           <div className="grid grid-cols-2 gap-3 mt-4">
-            <button className="btn-secondary" onClick={applyCustomTimer}>Apply time</button>
+            <button className="btn-secondary" onClick={applyCustomTimer}>Aplicar tiempo</button>
             <button className="btn-secondary" onClick={store.resetTimer}><RotateCcw size={16} /> Reset</button>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 w-full max-w-md">
-          <button className="btn-primary" onClick={store.togglePause}>{store.timerPaused ? 'Resume' : 'Pause'}</button>
-          <button className="btn-secondary" onClick={store.skipTimer}>Skip Rest</button>
+          <button className="btn-primary" onClick={store.togglePause}>{store.timerPaused ? 'Continuar' : 'Pausar'}</button>
+          <button className="btn-secondary" onClick={store.skipTimer}>Saltar descanso</button>
+        </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-obsidian text-white p-4 sm:p-8">
-      <section className="mx-auto max-w-6xl">
-        <header className="mb-6 border border-charcoal bg-carbon p-5 rounded">
+    <main className="app-shell min-h-screen p-4 text-white sm:p-8">
+      <section className="mx-auto max-w-7xl">
+        <header className="hero-panel mb-6 p-5 sm:p-7">
           <div className="flex items-center gap-2 text-volt font-mono uppercase tracking-[0.3em] text-xs"><Zap size={16} /> The Butterfly Project</div>
           <div className="flex items-start justify-between gap-4 mt-4 flex-wrap">
             <div>
-              <h1 className="text-3xl font-extrabold">{store.day?.name ?? 'Training day'}</h1>
+              <h1 className="text-3xl font-extrabold sm:text-4xl">{store.day?.name ?? 'Training day'}</h1>
               <p className="text-steel mt-2">Cycle day {store.cycleDay} - {store.cycleDate}</p>
-              {!isViewingToday && <p className="text-volt mt-2 text-sm">Viewing previous day from this cycle block.</p>}
+              {!isViewingToday && <p className="text-volt mt-2 text-sm">Mirando un dia anterior de este bloque.</p>}
+              <p className="mt-3 max-w-2xl text-sm text-steel">Esto tiene que sentirse como una consola de entrenamiento, no como un formulario suelto. Un ejercicio, un set, una decision clara.</p>
             </div>
-            <div className="border border-charcoal bg-graphite p-4 rounded min-w-[220px]">
-              <p className="text-xs uppercase tracking-[0.25em] text-steel mb-2">Progress</p>
-              <p className="font-mono text-2xl text-volt">{progress.completedSets}/{progress.totalSets}</p>
+            <div className="surface-card min-w-[260px] p-4">
+              <p className="text-xs uppercase tracking-[0.25em] text-steel mb-2">Progreso</p>
+              <p className="font-mono text-3xl text-volt">{progress.completedSets}/{progress.totalSets}</p>
               <div className="h-2 bg-obsidian rounded mt-3 overflow-hidden"><div className="h-full bg-volt" style={{ width: `${progress.completionRatio * 100}%` }} /></div>
-              <p className="text-xs text-steel mt-3">Exercises: {totalExercises} - Volume: {estimatedVolume.toFixed(1)} kg</p>
+              <p className="text-xs text-steel mt-3">Ejercicios: {totalExercises} - Volumen: {estimatedVolume.toFixed(1)} kg</p>
             </div>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            <div className="metric metric-highlight"><span>Sets restantes</span><strong>{remainingSets}</strong></div>
+            <div className="metric"><span>Proteina pendiente</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap}g minimo` : 'Objetivo base cumplido'}</strong></div>
+            <div className="metric"><span>Volumen del dia</span><strong>{todayVolume.toFixed(0)} kg</strong></div>
+            <div className="metric"><span>Siguiente foco</span><strong>{exercise?.name ?? 'Resumen final'}</strong></div>
           </div>
           <div className="grid grid-cols-7 gap-2 mt-5">
             {Array.from({ length: 7 }, (_, index) => index + 1).map((day) => {
@@ -457,48 +497,55 @@ export function App() {
           </div>
         </header>
 
-        <nav className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
+        <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_auto]">
+        <nav className="surface-card grid grid-cols-2 gap-2 p-2 md:grid-cols-4">
           {([
-            ['flow', 'Workout'],
-            ['dashboard', 'Dashboard'],
-            ['analytics', 'Analytics'],
+            ['flow', 'Entreno'],
+            ['dashboard', 'Tablero'],
+            ['analytics', 'Analitica'],
             ['plan', 'Plan']
           ] as Array<[TabKey, string]>).map(([key, label]) => (
-            <button key={key} className={activeTab === key ? 'btn-primary' : 'btn-secondary'} onClick={() => setActiveTab(key)}>{label}</button>
+            <button key={key} className={activeTab === key ? 'btn-primary' : 'nav-tab'} onClick={() => setActiveTab(key)}>{label}</button>
           ))}
         </nav>
+        <div className="surface-card flex flex-wrap items-center gap-2 p-2">
+          <button className="btn-secondary" type="button" onClick={resetCurrentSession} disabled={resettingDay || !store.day}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando...' : 'Reiniciar sesion'}</button>
+          <button className="btn-tertiary" type="button" onClick={() => setActiveTab('dashboard')}>Ver tablero</button>
+        </div>
+        </div>
 
         {error && <p className="mb-4 border border-red-500/40 bg-red-950/40 p-3 text-red-200 rounded">{error}</p>}
 
         {activeTab === 'dashboard' && (
           <section className="grid gap-4 md:grid-cols-3">
             <div className="metric"><span>Peso hacia 83 kg</span><strong>{latestMetric?.bodyWeightKg ?? 77.78} kg</strong><div className="h-2 bg-obsidian rounded mt-3 overflow-hidden"><div className="h-full bg-volt" style={{ width: `${bodyProgress}%` }} /></div><p className="mt-2 text-xs text-steel">{bodyProgress.toFixed(0)}% del camino hacia 83 kg.</p></div>
-            <div className="metric"><span>Proteina hoy</span><strong>{latestMetric?.proteinGrams ?? 0}g / 160-175g</strong></div>
+            <div className="metric"><span>Proteina hoy</span><strong>{proteinToday}g / 160-175g</strong><p className="mt-2 text-xs text-steel">{proteinTopGap > 0 ? `Te faltan ${proteinTopGap}g para tocar el techo del rango.` : 'Ya estas dentro del rango alto.'}</p></div>
             <div className="metric"><span>Volumen semanal</span><strong>{(volume?.total ?? 0).toFixed(0)} kg</strong></div>
 
-            <form onSubmit={saveMetric} className="md:col-span-3 border border-charcoal bg-carbon p-4 rounded grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <form onSubmit={saveMetric} className="surface-card md:col-span-3 grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]">
               <label className="field">Peso<input value={metricWeight} onChange={(e) => setMetricWeight(e.target.value)} type="number" step="0.01" /></label>
               <label className="field">Proteina<input value={metricProtein} onChange={(e) => setMetricProtein(e.target.value)} type="number" /></label>
               <button className="btn-primary"><Save size={16} /> Guardar</button>
             </form>
 
-            <div className="border border-charcoal bg-carbon p-4 rounded">
+            <div className="surface-card p-4">
               <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Musculos mas cargados</p>
               {strongestMuscles.length ? strongestMuscles.map(([muscle, value]) => <p key={muscle} className="flex justify-between py-2 border-b border-charcoal text-sm"><span>{muscleName(muscle)}</span><strong>{value.toFixed(0)} kg</strong></p>) : <p className="text-steel">Todavia sin volumen suficiente.</p>}
             </div>
 
-            <div className="border border-charcoal bg-carbon p-4 rounded">
+            <div className="surface-card p-4">
               <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Musculos menos trabajados</p>
               {weakestMuscles.length ? weakestMuscles.map(([muscle, value]) => <p key={muscle} className="flex justify-between py-2 border-b border-charcoal text-sm"><span>{muscleName(muscle)}</span><strong>{value.toFixed(0)} kg</strong></p>) : <p className="text-steel">Aun no hay distribucion suficiente para comparar.</p>}
             </div>
 
-            <div className="border border-charcoal bg-carbon p-4 rounded">
+            <div className="surface-card p-4">
               <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Meta diaria</p>
               <p className="text-sm text-steel">Hoy la app tiene que empujarte a 83 kg con consistencia, proteina y progresion real.</p>
-              <p className="mt-3 text-white font-medium">Volumen del dia: {(volume?.byDay?.[store.cycleDate] ?? 0).toFixed(0)} kg</p>
+              <p className="mt-3 text-white font-medium">Volumen del dia: {todayVolume.toFixed(0)} kg</p>
+              <p className="mt-2 text-sm text-steel">Sets pendientes: {remainingSets}. Proteina minima restante: {proteinFloorGap}g.</p>
             </div>
 
-            <div className="md:col-span-3 border border-charcoal bg-carbon p-4 rounded">
+            <div className="surface-card md:col-span-3 p-4">
               <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Alertas de progresion</p>
               {suggestions.length ? suggestions.map((item) => (
                 <div key={item.id} className="border border-volt/30 bg-volt/10 p-3 rounded mb-2">
@@ -516,7 +563,7 @@ export function App() {
 
         {activeTab === 'analytics' && (
           <section className="grid gap-4 md:grid-cols-2">
-            <div className="border border-charcoal bg-carbon p-4 rounded">
+            <div className="surface-card p-4">
               <h2 className="font-mono text-volt mb-3 flex gap-2"><BarChart3 /> Volumen por musculo</h2>
               {topEntries(volume?.byMuscle ?? {}).map(([muscle, value]) => (
                 <div key={muscle} className="mb-3">
@@ -526,12 +573,12 @@ export function App() {
               ))}
             </div>
 
-            <div className="border border-charcoal bg-carbon p-4 rounded">
+            <div className="surface-card p-4">
               <h2 className="font-mono text-volt mb-3 flex gap-2"><TrendingUp /> Volumen por ejercicio</h2>
               {topEntries(volume?.byExercise ?? {}).map(([name, value]) => <p key={name} className="flex justify-between border-b border-charcoal py-2 text-sm"><span>{name}</span><strong>{value.toFixed(0)} kg</strong></p>)}
             </div>
 
-            <div className="md:col-span-2 border border-charcoal bg-carbon p-4 rounded">
+            <div className="surface-card md:col-span-2 p-4">
               <h2 className="font-mono text-volt mb-3 flex gap-2"><Activity /> Volumen diario</h2>
               <div className="grid md:grid-cols-7 gap-3">
                 {Object.entries(volume?.byDay ?? {}).map(([day, value]) => (
@@ -547,13 +594,13 @@ export function App() {
 
         {activeTab === 'plan' && (
           <section className="grid gap-4">
-            <div className="flex gap-3 flex-wrap">
+            <div className="surface-card flex gap-3 flex-wrap p-3">
               <button className="btn-primary" disabled={planSaving} onClick={persistPlan}>Guardar plan</button>
               <button className="btn-secondary" disabled={planSaving} onClick={resetPlan}>Restaurar rutina base</button>
             </div>
 
             {planDays.map((day, dayIndex) => (
-              <section key={day.id} className="border border-charcoal bg-carbon p-4 rounded">
+              <section key={day.id} className="surface-card p-4">
                 <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
                   <h2 className="font-mono text-volt">Dia {day.cycleDay}: {day.name}</h2>
                   <button className="btn-tertiary" onClick={() => addCustomExercise(dayIndex)}><Plus size={14} /> Agregar ejercicio</button>
@@ -576,22 +623,30 @@ export function App() {
         )}
 
         {activeTab === 'flow' && (store.day?.exercises.length === 0 || store.completed ? (
-          <section className="border border-charcoal bg-graphite p-6 rounded text-center">
+          <section className="hero-panel p-6 text-center">
             <Activity className="mx-auto text-volt mb-4" size={42} />
-            <h2 className="text-2xl font-bold">Day complete</h2>
-            <p className="text-steel mt-3">Consume <strong className="text-volt">160g-175g protein</strong> to grow from 77.78 kg to 83.0 kg.</p>
+            <h2 className="text-2xl font-bold">Dia completo</h2>
+            <p className="text-steel mt-3">Consumí <strong className="text-volt">160g-175g de proteina</strong> para crecer de 77.78 kg a 83.0 kg.</p>
+            <div className="mt-6 flex justify-center">
+              <button className="btn-secondary" onClick={resetCurrentSession} disabled={resettingDay}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando...' : 'Reiniciar dia'}</button>
+            </div>
           </section>
         ) : exercise && (
           <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <section className="border border-charcoal bg-graphite p-5 rounded">
-              <p className="text-steel uppercase tracking-[0.25em] text-xs">Current exercise - Set {store.setNumber}/{exercise.sets}</p>
+            <section className="surface-card p-5">
+              <p className="text-steel uppercase tracking-[0.25em] text-xs">Ejercicio actual - Set {store.setNumber}/{exercise.sets}</p>
               <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
                 <h2 className="font-mono text-3xl text-volt">{exercise.name}</h2>
-                <div className="flex items-center gap-2 text-sm text-steel"><Clock3 size={16} /> Rest {exercise.restSeconds}s</div>
+                <div className="flex items-center gap-2 text-sm text-steel"><Clock3 size={16} /> Descanso {exercise.restSeconds}s</div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {exercise.warmup && <span className="status-pill">Activacion incluida</span>}
+                <span className="status-pill">{exercise.metadata?.kind === 'isolation' ? 'Aislado' : 'Compuesto'}</span>
+                <span className="status-pill">Volumen del dia {todayVolume.toFixed(0)} kg</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 mt-5 text-sm">
-                <div className="metric"><span>Target</span><strong>{exercise.targetReps}</strong></div>
+                <div className="metric"><span>Objetivo</span><strong>{exercise.targetReps}</strong></div>
                 <div className="metric"><span>RPE</span><strong>{exercise.rpe}</strong></div>
                 <div className="metric"><span>Tipo</span><strong>{exercise.metadata?.kind === 'isolation' ? 'Aislado' : 'Compuesto'}</strong></div>
                 <div className="metric"><span>Mejor set</span><strong>{history ? `${history.bestWeight}kg x ${history.bestReps}` : '-'}</strong></div>
@@ -599,35 +654,38 @@ export function App() {
                 <div className="metric"><span>Breath</span><strong>{exercise.breath}</strong></div>
               </div>
 
-              <div className="mt-4 border border-charcoal bg-carbon p-4 rounded">
+              <div className="coach-banner mt-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mb-2 flex gap-2"><Target size={14} /> Objetivo recomendado hoy</p>
                 <p className="font-mono text-xl text-volt">{recommendedWeight ? `${recommendedWeight} kg` : 'Sin cambio de carga'} {recommendedReps ? `x ${recommendedReps}+ reps` : ''}</p>
                 <p className="text-sm text-steel mt-2">{currentSuggestion ? `${currentSuggestion.reason} ${currentSuggestion.action}` : exercise.metadata?.overloadRecommendation}</p>
               </div>
 
               {previousSet && (
-                <div className="mt-5 border border-volt/30 bg-volt/10 p-3 rounded text-sm">
+                <div className="coach-banner mt-5 text-sm">
                   <p>Ghost set: {previousSet.weightKg} kg x {previousSet.reps} reps</p>
-                  <button className="btn-tertiary mt-3" type="button" onClick={useGhostSetValues}>Use previous set values</button>
+                  <button className="btn-tertiary mt-3" type="button" onClick={useGhostSetValues}>Usar valores del set previo</button>
                 </div>
               )}
 
               <form onSubmit={onSubmit} className="mt-6 grid gap-4">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <label className="field">Weight kg<input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} inputMode="decimal" type="number" min="0" step="0.25" required /></label>
+                  <label className="field">Peso kg<input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} inputMode="decimal" type="number" min="0" step="0.25" required /></label>
                   <label className="field">Reps<input value={reps} onChange={(e) => setReps(e.target.value)} inputMode="numeric" type="number" min="1" step="1" required /></label>
                   <label className="field">RIR<input value={rir} onChange={(e) => setRir(e.target.value)} type="number" min="0" max="10" /></label>
                   <label className="field">RPE real<input value={actualRpe} onChange={(e) => setActualRpe(e.target.value)} type="number" min="1" max="10" /></label>
                   <label className="field">Dolor 0-10<input value={painLevel} onChange={(e) => setPainLevel(e.target.value)} type="number" min="0" max="10" /></label>
                   <label className="field">Notas<input value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
                 </div>
-                <button className="btn-primary disabled:opacity-40" disabled={!weightKg || !reps || saving}>{saving ? 'Saving...' : 'Save set'}</button>
+                <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
+                  <button className="btn-primary disabled:opacity-40" disabled={!weightKg || !reps || saving}>{saving ? 'Guardando...' : 'Guardar set'}</button>
+                  <button className="btn-secondary" type="button" onClick={resetCurrentSession} disabled={resettingDay}>{resettingDay ? 'Reiniciando...' : 'Reiniciar sesion del dia'}</button>
+                </div>
               </form>
             </section>
 
             <aside className="grid gap-4">
               <AnatomyMap exercise={exercise} />
-              <section className="border border-charcoal bg-carbon p-4 rounded">
+              <section className="surface-card p-4">
                 <h3 className="font-mono text-volt flex gap-2"><BookOpen /> Guia tecnica</h3>
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mt-3">Video</p>
                 {videoResource.embedUrl ? (
@@ -642,23 +700,33 @@ export function App() {
                     </div>
                   </div>
                 )}
+                <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Instrucciones</p>
+                <ul className="list-disc pl-5 text-sm text-steel">{exercise.metadata?.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}</ul>
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Cues</p>
                 <ul className="list-disc pl-5 text-sm text-steel">{exercise.metadata?.technicalCues.map((cue) => <li key={cue}>{cue}</li>)}</ul>
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Errores comunes</p>
                 <ul className="list-disc pl-5 text-sm text-steel">{exercise.metadata?.commonMistakes.map((mistake) => <li key={mistake}>{mistake}</li>)}</ul>
               </section>
-              <section className="border border-charcoal bg-carbon p-4 rounded">
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Up next</p>
+              <section className="surface-card p-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Sigue despues</p>
                 <p className="text-white font-medium">{store.setNumber < exercise.sets ? `Repeti ${exercise.name}` : nextExerciseName}</p>
                 <p className="text-steel text-sm mt-2">{isViewingToday ? 'Sesion actual' : `Mirando historial del dia ${viewedCycleDay}`}</p>
                 <p className="text-steel text-sm mt-1">Ultima sesion: {history?.latestDate ?? 'sin datos previos'}</p>
                 {currentSuggestion && <div className="mt-3 flex gap-2"><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, true)}>Aceptar progreso</button><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, false)}>Posponer</button></div>}
               </section>
-              <section className="border border-charcoal bg-carbon p-4 rounded">
+              <section className="surface-card p-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Coach de sesion</p>
+                <div className="grid gap-3">
+                  <div className="metric"><span>Sets completados</span><strong>{progress.completedSets}</strong></div>
+                  <div className="metric"><span>Sets restantes</span><strong>{remainingSets}</strong></div>
+                  <div className="metric"><span>Proteina faltante</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap}g` : '0g'}</strong></div>
+                </div>
+              </section>
+              <section className="surface-card p-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Navegacion</p>
                 <div className="grid gap-3">
-                  <button className="btn-secondary" type="button" disabled={viewedCycleDay <= 1 || switchingDay} onClick={() => handleDaySelection(viewedCycleDay - 1)}><ChevronLeft size={16} /> Previous day</button>
-                  <button className="btn-secondary" type="button" disabled={viewedCycleDay >= currentCycleDay || switchingDay} onClick={() => handleDaySelection(viewedCycleDay + 1)}><ChevronRight size={16} /> Next day</button>
+                  <button className="btn-secondary" type="button" disabled={viewedCycleDay <= 1 || switchingDay} onClick={() => handleDaySelection(viewedCycleDay - 1)}><ChevronLeft size={16} /> Dia anterior</button>
+                  <button className="btn-secondary" type="button" disabled={viewedCycleDay >= currentCycleDay || switchingDay} onClick={() => handleDaySelection(viewedCycleDay + 1)}><ChevronRight size={16} /> Dia siguiente</button>
                 </div>
               </section>
             </aside>

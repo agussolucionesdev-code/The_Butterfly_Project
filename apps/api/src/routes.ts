@@ -26,6 +26,11 @@ const bodyMetricSchema = z.object({
   notes: z.string().max(500).optional()
 });
 
+const resetDaySchema = z.object({
+  cycleDay: z.number().int().min(1).max(7),
+  cycleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+});
+
 const metadataSchema = z.object({
   kind: z.enum(['compound', 'isolation']),
   primaryMuscles: z.array(z.string()).default([]),
@@ -166,6 +171,32 @@ export async function registerRoutes(app: FastifyInstance) {
     void ensureProgressionSuggestions();
     const next = input.setNumber < exercise.sets ? { type: 'next-set', exerciseId: exercise.id, setNumber: input.setNumber + 1 } : { type: 'next-exercise' };
     return reply.code(201).send({ log: serializeLog(log), restSeconds: exercise.restSeconds, next });
+  });
+
+  app.post('/api/logs/reset-day', async (request, reply) => {
+    const parsed = resetDaySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Invalid reset payload.' });
+    if (isFutureCycleDay(parsed.data.cycleDay)) return reply.code(403).send({ message: 'Future training days are locked.' });
+
+    const day = await prisma.trainingDay.findUnique({
+      where: { cycleDay: parsed.data.cycleDay },
+      include: { exercises: { select: { id: true } } }
+    });
+
+    if (!day) return reply.code(404).send({ message: 'Training day not found.' });
+
+    const exerciseIds = day.exercises.map((exercise) => exercise.id);
+    const cycleDate = parseDateOnly(parsed.data.cycleDate);
+
+    const deletedLogs = await prisma.setLog.deleteMany({
+      where: { cycleDay: parsed.data.cycleDay, cycleDate, exerciseId: { in: exerciseIds } }
+    });
+
+    await prisma.progressionSuggestion.deleteMany({
+      where: { exerciseId: { in: exerciseIds }, status: 'pending' }
+    });
+
+    return { ok: true, deletedLogs: deletedLogs.count };
   });
 
   app.get('/api/exercises/:id/metadata', async (request, reply) => {

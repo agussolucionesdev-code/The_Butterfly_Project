@@ -3,18 +3,34 @@
 @tailwind utilities;
 
 :root { color-scheme: dark; background: #050505; }
-body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #050505; }
+html { background: #050505; }
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  color: #fff;
+  background:
+    radial-gradient(circle at top, rgba(204, 255, 0, 0.13), transparent 22%),
+    radial-gradient(circle at 80% 20%, rgba(148, 163, 184, 0.12), transparent 18%),
+    linear-gradient(180deg, #090909 0%, #050505 48%, #040404 100%);
+}
 
 @layer components {
-  .btn-primary { @apply rounded border border-volt bg-volt px-4 py-4 font-mono font-bold uppercase tracking-widest text-obsidian transition active:scale-[0.99]; }
-  .btn-secondary { @apply rounded border border-charcoal bg-carbon px-4 py-4 font-mono font-bold uppercase tracking-widest text-white transition hover:border-volt; }
-  .btn-tertiary { @apply inline-flex items-center justify-center rounded border border-volt/40 bg-transparent px-3 py-2 font-mono text-xs font-bold uppercase tracking-widest text-volt transition hover:border-volt; }
-  .metric { @apply rounded border border-charcoal bg-carbon p-3; }
-  .metric span { @apply block text-steel uppercase tracking-widest text-xs; }
-  .metric strong { @apply mt-1 block font-mono text-white; }
-  .field { @apply grid gap-2 text-sm uppercase tracking-widest text-steel; }
-  .field input { @apply rounded border border-charcoal bg-obsidian p-4 text-2xl font-mono text-white outline-none focus:border-volt; }
-  .day-pill { @apply h-10 grid place-items-center rounded border border-charcoal bg-transparent font-mono text-steel transition hover:border-volt disabled:cursor-not-allowed disabled:opacity-60; }
+  .app-shell { @apply relative overflow-hidden; }
+  .surface-card { @apply rounded-2xl border border-charcoal/80 bg-carbon/90 shadow-[0_16px_60px_rgba(0,0,0,0.35)] backdrop-blur-sm; }
+  .hero-panel { @apply rounded-[28px] border border-volt/20 bg-[linear-gradient(180deg,rgba(26,26,26,0.95),rgba(10,10,10,0.98))] shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-volt bg-volt px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.22em] text-obsidian transition hover:brightness-110 active:scale-[0.99]; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-charcoal bg-graphite/90 px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-white transition hover:border-volt hover:text-volt; }
+  .btn-tertiary { @apply inline-flex items-center justify-center rounded-xl border border-volt/40 bg-transparent px-3 py-2 font-mono text-xs font-bold uppercase tracking-[0.18em] text-volt transition hover:border-volt hover:bg-volt/10; }
+  .nav-tab { @apply inline-flex items-center justify-center rounded-xl border border-transparent bg-transparent px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-steel transition hover:border-charcoal hover:text-white; }
+  .metric { @apply rounded-2xl border border-charcoal/80 bg-graphite/90 p-4; }
+  .metric-highlight { @apply border-volt/30 bg-volt/10; }
+  .metric span { @apply block text-steel uppercase tracking-[0.22em] text-[11px]; }
+  .metric strong { @apply mt-2 block font-mono text-lg text-white; }
+  .field { @apply grid gap-2 text-[11px] uppercase tracking-[0.22em] text-steel; }
+  .field input { @apply rounded-xl border border-charcoal bg-obsidian/90 p-4 text-xl font-mono text-white outline-none transition focus:border-volt focus:shadow-[0_0_0_1px_rgba(204,255,0,0.25)]; }
+  .day-pill { @apply rounded-2xl border border-charcoal/80 bg-[#0b0b0b]/80 font-mono text-steel transition hover:border-volt disabled:cursor-not-allowed disabled:opacity-60; }
   .day-pill-active { @apply border-volt text-volt bg-volt/10; }
   .day-pill-locked { @apply text-steel/40; }
+  .status-pill { @apply inline-flex items-center rounded-full border border-volt/20 bg-volt/10 px-3 py-1 text-[11px] font-mono uppercase tracking-[0.18em] text-volt; }
+  .coach-banner { @apply rounded-2xl border border-volt/20 bg-[linear-gradient(180deg,rgba(204,255,0,0.08),rgba(18,18,18,0.9))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]; }
 }

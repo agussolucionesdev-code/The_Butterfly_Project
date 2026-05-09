@@ -37,6 +37,10 @@ export async function saveSet(input: {
   return api('/api/logs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
 }
 
+export async function resetDayLogs(input: { cycleDay: number; cycleDate: string }): Promise<{ ok: true; deletedLogs: number }> {
+  return api('/api/logs/reset-day', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+}
+
 export async function getExerciseHistory(exerciseId: string): Promise<{ history: ExerciseHistory }> {
   return api(`/api/exercises/${exerciseId}/history`);
 }
