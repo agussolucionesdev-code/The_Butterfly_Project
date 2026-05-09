@@ -55,6 +55,16 @@ function lowEntries(record: Record<string, number>, count = 3) {
   return Object.entries(record).sort((a, b) => a[1] - b[1]).slice(0, count);
 }
 
+function formatBestSet(history: ExerciseHistory | null) {
+  if (!history || history.bestWeight <= 0 || history.bestReps <= 0) return 'Sin historial';
+  return `${history.bestWeight}kg x ${history.bestReps}`;
+}
+
+function formatEquivalentSet(log?: ExerciseHistory['latestLogs'][number]) {
+  if (!log) return 'Sin dato';
+  return `${log.weightKg}kg x ${log.reps}`;
+}
+
 function dayLabel(cycleDay: number) {
   return `Dia ${cycleDay}`;
 }
@@ -437,7 +447,7 @@ export function App() {
           </div>
           <div className="grid grid-cols-2 gap-3 mt-4">
             <button className="btn-secondary" onClick={applyCustomTimer}>Aplicar tiempo</button>
-            <button className="btn-secondary" onClick={store.resetTimer}><RotateCcw size={16} /> Reset</button>
+              <button className="btn-secondary" onClick={store.resetTimer}><RotateCcw size={16} /> Reset</button>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 w-full max-w-md">
@@ -509,7 +519,7 @@ export function App() {
           ))}
         </nav>
         <div className="surface-card flex flex-wrap items-center gap-2 p-2">
-          <button className="btn-secondary" type="button" onClick={resetCurrentSession} disabled={resettingDay || !store.day}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando...' : 'Reiniciar sesion'}</button>
+          <button className="btn-danger" type="button" onClick={resetCurrentSession} disabled={resettingDay || !store.day}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando...' : 'Reiniciar sesion'}</button>
           <button className="btn-tertiary" type="button" onClick={() => setActiveTab('dashboard')}>Ver tablero</button>
         </div>
         </div>
@@ -649,9 +659,9 @@ export function App() {
                 <div className="metric"><span>Objetivo</span><strong>{exercise.targetReps}</strong></div>
                 <div className="metric"><span>RPE</span><strong>{exercise.rpe}</strong></div>
                 <div className="metric"><span>Tipo</span><strong>{exercise.metadata?.kind === 'isolation' ? 'Aislado' : 'Compuesto'}</strong></div>
-                <div className="metric"><span>Mejor set</span><strong>{history ? `${history.bestWeight}kg x ${history.bestReps}` : '-'}</strong></div>
-                <div className="metric"><span>Ultimo set equivalente</span><strong>{lastEquivalentSet ? `${lastEquivalentSet.weightKg}kg x ${lastEquivalentSet.reps}` : 'Sin dato'}</strong></div>
-                <div className="metric"><span>Breath</span><strong>{exercise.breath}</strong></div>
+                <div className="metric"><span>Mejor set</span><strong>{formatBestSet(history)}</strong></div>
+                <div className="metric"><span>Ultimo set equivalente</span><strong>{formatEquivalentSet(lastEquivalentSet)}</strong></div>
+                <div className="metric"><span>Respiracion</span><strong>{exercise.breath}</strong></div>
               </div>
 
               <div className="coach-banner mt-4">
@@ -669,16 +679,16 @@ export function App() {
 
               <form onSubmit={onSubmit} className="mt-6 grid gap-4">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <label className="field">Peso kg<input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} inputMode="decimal" type="number" min="0" step="0.25" required /></label>
-                  <label className="field">Reps<input value={reps} onChange={(e) => setReps(e.target.value)} inputMode="numeric" type="number" min="1" step="1" required /></label>
+                  <label className="field">Peso kg<input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} inputMode="decimal" type="number" min="0" step="0.25" placeholder="Ej. 80" required /></label>
+                  <label className="field">Reps<input value={reps} onChange={(e) => setReps(e.target.value)} inputMode="numeric" type="number" min="1" step="1" placeholder="Ej. 8" required /></label>
                   <label className="field">RIR<input value={rir} onChange={(e) => setRir(e.target.value)} type="number" min="0" max="10" /></label>
                   <label className="field">RPE real<input value={actualRpe} onChange={(e) => setActualRpe(e.target.value)} type="number" min="1" max="10" /></label>
                   <label className="field">Dolor 0-10<input value={painLevel} onChange={(e) => setPainLevel(e.target.value)} type="number" min="0" max="10" /></label>
-                  <label className="field">Notas<input value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+                  <label className="field">Notas<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Molestias, tecnica, sensaciones" /></label>
                 </div>
                 <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
                   <button className="btn-primary disabled:opacity-40" disabled={!weightKg || !reps || saving}>{saving ? 'Guardando...' : 'Guardar set'}</button>
-                  <button className="btn-secondary" type="button" onClick={resetCurrentSession} disabled={resettingDay}>{resettingDay ? 'Reiniciando...' : 'Reiniciar sesion del dia'}</button>
+                  <button className="btn-danger" type="button" onClick={resetCurrentSession} disabled={resettingDay}>{resettingDay ? 'Reiniciando...' : 'Reiniciar sesion del dia'}</button>
                 </div>
               </form>
             </section>

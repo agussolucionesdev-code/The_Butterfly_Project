@@ -20,6 +20,7 @@ body {
   .hero-panel { @apply rounded-[28px] border border-volt/20 bg-[linear-gradient(180deg,rgba(26,26,26,0.95),rgba(10,10,10,0.98))] shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur; }
   .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-volt bg-volt px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.22em] text-obsidian transition hover:brightness-110 active:scale-[0.99]; }
   .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-charcoal bg-graphite/90 px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-white transition hover:border-volt hover:text-volt; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-red-200 transition hover:border-red-400 hover:text-white; }
   .btn-tertiary { @apply inline-flex items-center justify-center rounded-xl border border-volt/40 bg-transparent px-3 py-2 font-mono text-xs font-bold uppercase tracking-[0.18em] text-volt transition hover:border-volt hover:bg-volt/10; }
   .nav-tab { @apply inline-flex items-center justify-center rounded-xl border border-transparent bg-transparent px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-steel transition hover:border-charcoal hover:text-white; }
   .metric { @apply rounded-2xl border border-charcoal/80 bg-graphite/90 p-4; }
