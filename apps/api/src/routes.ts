@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { formatDateOnly, getCycleDay, isFutureCycleDay, parseDateOnly } from '@butterfly/shared';
 import { prisma } from './db.js';
@@ -10,16 +11,58 @@ const setLogSchema = z.object({
   cycleDay: z.number().int().min(1).max(7),
   cycleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   setNumber: z.number().int().positive(),
+  setType: z.enum(['working', 'approach']).default('working'),
+  approachOrder: z.number().int().positive().optional(),
   weightKg: z.number().positive(),
   reps: z.number().int().positive(),
   rir: z.number().int().min(0).max(10).optional(),
   actualRpe: z.number().int().min(1).max(10).optional(),
   techniqueStatus: z.enum(['clean', 'grindy', 'compensated']).optional(),
   tempo: z.string().max(24).optional(),
+  tempoSeconds: z.number().int().min(0).max(20).optional(),
+  holdSeconds: z.number().int().min(0).max(20).optional(),
   painLevel: z.number().int().min(0).max(10).optional(),
   notes: z.string().max(500).optional(),
   restTakenSeconds: z.number().int().min(0).optional()
 });
+
+const approachLogSchema = setLogSchema.extend({
+  setType: z.literal('approach').default('approach'),
+  setNumber: z.number().int().positive(),
+  approachOrder: z.number().int().positive()
+});
+
+const sessionSchema = z.object({
+  cycleDay: z.number().int().min(1).max(7),
+  cycleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  notes: z.string().max(500).optional()
+});
+
+const nutritionLogSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  meal: z.string().min(1).max(80),
+  foodName: z.string().min(1).max(120),
+  quantity: z.number().positive().default(1),
+  proteinGrams: z.number().min(0),
+  calories: z.number().int().min(0),
+  notes: z.string().max(500).optional()
+});
+
+const habitCheckSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  goalKey: z.string().min(1),
+  completed: z.boolean(),
+  value: z.string().max(120).optional(),
+  notes: z.string().max(500).optional()
+});
+
+const photoSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  angle: z.enum(['front', 'side', 'back']),
+  imageDataUrl: z.string().min(20).optional(),
+  imageUrl: z.string().url().optional(),
+  notes: z.string().max(500).optional()
+}).refine((value) => value.imageDataUrl || value.imageUrl, { message: 'Se requiere imagen.' });
 
 const bodyMetricSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -78,6 +121,7 @@ function serializeLog(log: { weightKg: unknown; cycleDate: Date } & Record<strin
   return {
     ...log,
     weightKg: Number(log.weightKg),
+    setType: log.setType ?? 'working',
     cycleDate: formatDateOnly(log.cycleDate)
   };
 }
@@ -123,6 +167,46 @@ function serializeSuggestion(suggestion: Record<string, unknown>) {
       : suggestion.exercise
   };
 }
+
+function serializeNutritionLog(log: { date: Date; quantity: unknown; proteinGrams: unknown } & Record<string, unknown>) {
+  return {
+    ...log,
+    date: formatDateOnly(log.date),
+    quantity: Number(log.quantity),
+    proteinGrams: Number(log.proteinGrams)
+  };
+}
+
+function serializePhoto(photo: { date: Date; analyses?: unknown[] } & Record<string, unknown>) {
+  return {
+    ...photo,
+    date: formatDateOnly(photo.date)
+  };
+}
+
+const BUDGET_FOODS = [
+  { name: 'Huevos', serving: '2 unidades', proteinGrams: 12, calories: 140, category: 'proteina', notes: 'Barato, completo y fácil de sumar al desayuno o cena.' },
+  { name: 'Atún al natural', serving: '1 lata', proteinGrams: 24, calories: 120, category: 'proteina', notes: 'Alta proteína con pocas calorías; ideal cuando falta llegar al rango.' },
+  { name: 'Pollo', serving: '150 g cocido', proteinGrams: 45, calories: 250, category: 'proteina', notes: 'Base sólida para volumen limpio.' },
+  { name: 'Leche', serving: '500 ml', proteinGrams: 16, calories: 250, category: 'proteina', notes: 'Útil si cuesta comer sólido.' },
+  { name: 'Yogur natural', serving: '250 g', proteinGrams: 12, calories: 160, category: 'proteina', notes: 'Combinable con avena y fruta.' },
+  { name: 'Lentejas', serving: '1 plato', proteinGrams: 18, calories: 330, category: 'mixto', notes: 'Proteína vegetal, carbohidratos y fibra.' },
+  { name: 'Porotos', serving: '1 plato', proteinGrams: 15, calories: 300, category: 'mixto', notes: 'Muy buen costo por caloría.' },
+  { name: 'Avena', serving: '80 g', proteinGrams: 10, calories: 310, category: 'carbohidrato', notes: 'Energía sostenida para entrenar.' },
+  { name: 'Arroz', serving: '1 taza cocida', proteinGrams: 4, calories: 205, category: 'carbohidrato', notes: 'Combustible barato para subir de peso.' },
+  { name: 'Banana', serving: '1 unidad', proteinGrams: 1, calories: 105, category: 'fruta', notes: 'Pre-entreno simple y digestivo.' },
+  { name: 'Papa', serving: '300 g', proteinGrams: 6, calories: 260, category: 'carbohidrato', notes: 'Saciedad y potasio.' }
+] as const;
+
+const DEFAULT_HABITS = [
+  { key: 'no-sugar', label: 'Sin azúcar agregada', target: 'Evitar azúcar agregada durante el día', order: 1 },
+  { key: 'no-alcohol', label: 'Sin alcohol', target: '0 alcohol', order: 2 },
+  { key: 'protein', label: 'Proteína 160-175 g', target: 'Llegar al rango diario de proteína', order: 3 },
+  { key: 'water', label: 'Agua', target: '2-3 litros', order: 4 },
+  { key: 'training', label: 'Entrenamiento', target: 'Completar sesión o descanso activo', order: 5 },
+  { key: 'sleep', label: 'Sueño', target: '7-9 horas', order: 6 },
+  { key: 'mobility', label: 'Movilidad', target: '5-10 minutos', order: 7 }
+] as const;
 
 function buildReferenceUrl(exerciseName: string) {
   return `https://www.google.com/search?q=${encodeURIComponent(`site:exrx.net ${exerciseName}`)}`;
@@ -172,7 +256,7 @@ async function syncExerciseProgression(exerciseId: string) {
     where: { id: exerciseId },
     include: {
       metadata: true,
-      logs: { orderBy: [{ cycleDate: 'desc' }, { setNumber: 'asc' }] }
+      logs: { where: { setType: 'working' }, orderBy: [{ cycleDate: 'desc' }, { setNumber: 'asc' }] }
     }
   });
 
@@ -229,6 +313,81 @@ async function syncExerciseProgression(exerciseId: string) {
 async function syncAllProgressions() {
   const exercises = await prisma.exercise.findMany({ where: { active: true }, select: { id: true } });
   await Promise.all(exercises.map((exercise) => syncExerciseProgression(exercise.id)));
+}
+
+async function ensureFoodItems() {
+  await Promise.all(BUDGET_FOODS.map((food) => prisma.foodItem.upsert({
+    where: { name: food.name },
+    update: food,
+    create: food
+  })));
+}
+
+async function ensureHabitGoals() {
+  await Promise.all(DEFAULT_HABITS.map((goal) => prisma.habitGoal.upsert({
+    where: { key: goal.key },
+    update: { label: goal.label, target: goal.target, order: goal.order, active: true },
+    create: goal
+  })));
+}
+
+function buildDailyChallenge(date: Date, cycleDay: number) {
+  const day = formatDateOnly(date);
+  const variants = [
+    { category: 'technique', title: 'Técnica antes que ego', description: 'En el primer ejercicio filmá o anotá si el rango fue limpio. Si compensás, no subas carga.' },
+    { category: 'mobility', title: 'Movilidad de 8 minutos', description: 'Antes de entrenar: hombros/cadera/columna según el día. Prepará articulaciones, no fatigues.' },
+    { category: 'nutrition', title: 'Proteína ancla', description: 'Asegurá una comida con 35-45 g de proteína antes de que termine la tarde.' }
+  ];
+  return variants[(cycleDay + day.length) % variants.length];
+}
+
+function buildRuleCoachMessage(exercise: ExerciseWithMetadata | null, latestApplied: Array<Record<string, unknown>>) {
+  if (!exercise) {
+    return {
+      title: 'Día de recuperación inteligente',
+      message: 'Hoy no hay ejercicio activo. Mantené proteína, pasos suaves y sueño para llegar fuerte a la próxima sesión.',
+      reason: 'El día actual no tiene series efectivas programadas.',
+      action: 'Cargá peso/proteína, cumplí hábitos y evitá azúcar/alcohol.'
+    };
+  }
+
+  const latestForExercise = latestApplied.find((item) => item.exerciseId === exercise.id);
+  const target = exercise.plannedWeightKg ? `${Number(exercise.plannedWeightKg)} kg` : 'la carga que controles';
+  const repGoal = exercise.plannedRepGoal ? `${exercise.plannedRepGoal}+ reps` : String(exercise.targetReps ?? 'rango objetivo');
+
+  return {
+    title: `Objetivo de hoy: ${exercise.name}`,
+    message: `Usá ${target}, buscá ${repGoal}, mantené excéntrica controlada y frená si aparece dolor o compensación.`,
+    reason: latestForExercise?.reason as string ?? exercise.lastProgressionReason as string ?? 'No hay una progresión reciente suficiente; hoy consolidamos técnica y rango.',
+    action: latestForExercise?.action as string ?? exercise.lastProgressionAction as string ?? 'Si completás el rango alto con RIR 1-2 y técnica limpia, la próxima sesión subimos estímulo.'
+  };
+}
+
+async function uploadToCloudinary(imageDataUrl: string) {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloudName || !apiKey || !apiSecret) {
+    return { imageUrl: imageDataUrl, publicId: null };
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const folder = 'butterfly-progress';
+  const signature = crypto
+    .createHash('sha1')
+    .update(`folder=${folder}&timestamp=${timestamp}${apiSecret}`)
+    .digest('hex');
+  const form = new FormData();
+  form.set('file', imageDataUrl);
+  form.set('api_key', apiKey);
+  form.set('timestamp', String(timestamp));
+  form.set('folder', folder);
+  form.set('signature', signature);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: form });
+  if (!response.ok) throw new Error('Cloudinary rechazó la imagen.');
+  const payload = await response.json() as { secure_url: string; public_id: string };
+  return { imageUrl: payload.secure_url, publicId: payload.public_id };
 }
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -288,23 +447,28 @@ export async function registerRoutes(app: FastifyInstance) {
     const exercise = await prisma.exercise.findUnique({ where: { id: input.exerciseId }, include: { trainingDay: true } });
     if (!exercise || !exercise.active) return reply.code(404).send({ message: 'Ejercicio no encontrado.' });
     if (exercise.trainingDay.cycleDay !== input.cycleDay) return reply.code(400).send({ message: 'El ejercicio no pertenece a ese día.' });
-    if (input.setNumber > exercise.sets) return reply.code(400).send({ message: 'Ese set excede la cantidad planificada.' });
+    if (input.setType === 'working' && input.setNumber > exercise.sets) return reply.code(400).send({ message: 'Ese set excede la cantidad planificada.' });
 
     const log = await prisma.setLog.upsert({
       where: {
-        exerciseId_cycleDate_setNumber: {
+        exerciseId_cycleDate_setType_setNumber: {
           exerciseId: input.exerciseId,
           cycleDate: parseDateOnly(input.cycleDate),
+          setType: input.setType,
           setNumber: input.setNumber
         }
       },
       update: {
+        setType: input.setType,
+        approachOrder: input.approachOrder,
         weightKg: input.weightKg,
         reps: input.reps,
         rir: input.rir,
         actualRpe: input.actualRpe,
         techniqueStatus: input.techniqueStatus,
         tempo: input.tempo,
+        tempoSeconds: input.tempoSeconds,
+        holdSeconds: input.holdSeconds,
         painLevel: input.painLevel,
         notes: input.notes,
         restTakenSeconds: input.restTakenSeconds,
@@ -315,21 +479,27 @@ export async function registerRoutes(app: FastifyInstance) {
         cycleDay: input.cycleDay,
         cycleDate: parseDateOnly(input.cycleDate),
         setNumber: input.setNumber,
+        setType: input.setType,
+        approachOrder: input.approachOrder,
         weightKg: input.weightKg,
         reps: input.reps,
         rir: input.rir,
         actualRpe: input.actualRpe,
         techniqueStatus: input.techniqueStatus,
         tempo: input.tempo,
+        tempoSeconds: input.tempoSeconds,
+        holdSeconds: input.holdSeconds,
         painLevel: input.painLevel,
         notes: input.notes,
         restTakenSeconds: input.restTakenSeconds
       }
     });
 
-    await syncExerciseProgression(input.exerciseId);
+    if (input.setType === 'working') await syncExerciseProgression(input.exerciseId);
 
-    const next = input.setNumber < exercise.sets
+    const next = input.setType === 'approach'
+      ? { type: 'approach-saved', exerciseId: exercise.id, setNumber: input.setNumber }
+      : input.setNumber < exercise.sets
       ? { type: 'next-set', exerciseId: exercise.id, setNumber: input.setNumber + 1 }
       : { type: 'next-exercise' };
 
@@ -361,6 +531,160 @@ export async function registerRoutes(app: FastifyInstance) {
     return { ok: true, deletedLogs: deletedLogs.count };
   });
 
+  app.post('/api/sessions/start', async (request, reply) => {
+    const parsed = sessionSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Sesión inválida.' });
+    if (isFutureCycleDay(parsed.data.cycleDay)) return reply.code(403).send({ message: 'Los días futuros están bloqueados.' });
+    const session = await prisma.workoutSession.upsert({
+      where: { cycleDay_cycleDate: { cycleDay: parsed.data.cycleDay, cycleDate: parseDateOnly(parsed.data.cycleDate) } },
+      update: { status: 'active', notes: parsed.data.notes },
+      create: { cycleDay: parsed.data.cycleDay, cycleDate: parseDateOnly(parsed.data.cycleDate), notes: parsed.data.notes }
+    });
+    return { session };
+  });
+
+  app.post('/api/sessions/reset', async (request, reply) => {
+    const parsed = resetDaySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Payload de reinicio inválido.' });
+    const cycleDate = parseDateOnly(parsed.data.cycleDate);
+    const deleted = await prisma.setLog.deleteMany({ where: { cycleDay: parsed.data.cycleDay, cycleDate } });
+    await prisma.workoutSession.deleteMany({ where: { cycleDay: parsed.data.cycleDay, cycleDate } });
+    return { ok: true, deletedLogs: deleted.count };
+  });
+
+  app.post('/api/logs/approach', async (request, reply) => {
+    const parsed = approachLogSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Aproximación inválida.', issues: parsed.error.flatten() });
+    request.body = parsed.data;
+    return app.inject({
+      method: 'POST',
+      url: '/api/logs',
+      payload: parsed.data
+    }).then(async (response) => reply.code(response.statusCode).send(JSON.parse(response.payload)));
+  });
+
+  app.get('/api/coach/today', async () => {
+    const cycleDay = getCycleDay();
+    const cycleDate = parseDateOnly(formatDateOnly(new Date()));
+    const day = await prisma.trainingDay.findUnique({
+      where: { cycleDay },
+      include: { exercises: { where: { active: true }, include: { metadata: true }, orderBy: { order: 'asc' } } }
+    });
+    const latestApplied = await prisma.progressionSuggestion.findMany({ where: { status: 'accepted' }, orderBy: [{ resolvedAt: 'desc' }, { createdAt: 'desc' }], take: 12 });
+    const exercise = day?.exercises[0] ? (serializeExercise(day.exercises[0]) as ExerciseWithMetadata) : null;
+    const recommendation = buildRuleCoachMessage(exercise, latestApplied);
+    const saved = await prisma.coachRecommendation.create({
+      data: { cycleDay, cycleDate, exerciseId: typeof exercise?.id === 'string' ? exercise.id : undefined, ...recommendation }
+    });
+    return { recommendation: saved };
+  });
+
+  app.post('/api/coach/recalculate', async () => {
+    await syncAllProgressions();
+    const cycleDay = getCycleDay();
+    const cycleDate = parseDateOnly(formatDateOnly(new Date()));
+    const latestApplied = await prisma.progressionSuggestion.findMany({ where: { status: 'accepted' }, orderBy: [{ resolvedAt: 'desc' }, { createdAt: 'desc' }], take: 12 });
+    const recommendation = buildRuleCoachMessage(null, latestApplied);
+    const saved = await prisma.coachRecommendation.create({ data: { cycleDay, cycleDate, ...recommendation, title: 'Coach recalculado' } });
+    return { recommendation: saved };
+  });
+
+  app.get('/api/nutrition/today', async () => {
+    await ensureFoodItems();
+    const date = parseDateOnly(formatDateOnly(new Date()));
+    const [logs, foods] = await Promise.all([
+      prisma.nutritionLog.findMany({ where: { date }, orderBy: { createdAt: 'asc' } }),
+      prisma.foodItem.findMany({ orderBy: [{ budget: 'desc' }, { proteinGrams: 'desc' }] })
+    ]);
+    const proteinTotal = logs.reduce((total, log) => total + Number(log.proteinGrams), 0);
+    const caloriesTotal = logs.reduce((total, log) => total + log.calories, 0);
+    return {
+      date: formatDateOnly(date),
+      targetProtein: { min: 160, max: 175 },
+      proteinTotal,
+      caloriesTotal,
+      remainingProtein: Math.max(0, 160 - proteinTotal),
+      logs: logs.map(serializeNutritionLog),
+      foods: foods.map((food) => ({ ...food, proteinGrams: Number(food.proteinGrams) }))
+    };
+  });
+
+  app.post('/api/nutrition/logs', async (request, reply) => {
+    const parsed = nutritionLogSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Registro nutricional inválido.', issues: parsed.error.flatten() });
+    const log = await prisma.nutritionLog.create({
+      data: { ...parsed.data, date: parseDateOnly(parsed.data.date) }
+    });
+    return { log: serializeNutritionLog(log) };
+  });
+
+  app.get('/api/habits/today', async () => {
+    await ensureHabitGoals();
+    const date = parseDateOnly(formatDateOnly(new Date()));
+    const [goals, logs] = await Promise.all([
+      prisma.habitGoal.findMany({ where: { active: true }, orderBy: { order: 'asc' } }),
+      prisma.habitLog.findMany({ where: { date } })
+    ]);
+    return { date: formatDateOnly(date), goals, logs: logs.map((log) => ({ ...log, date: formatDateOnly(log.date) })) };
+  });
+
+  app.post('/api/habits/check', async (request, reply) => {
+    const parsed = habitCheckSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Hábito inválido.', issues: parsed.error.flatten() });
+    await ensureHabitGoals();
+    const log = await prisma.habitLog.upsert({
+      where: { goalKey_date: { goalKey: parsed.data.goalKey, date: parseDateOnly(parsed.data.date) } },
+      update: { completed: parsed.data.completed, value: parsed.data.value, notes: parsed.data.notes },
+      create: { goalKey: parsed.data.goalKey, date: parseDateOnly(parsed.data.date), completed: parsed.data.completed, value: parsed.data.value, notes: parsed.data.notes }
+    });
+    return { log: { ...log, date: formatDateOnly(log.date) } };
+  });
+
+  app.get('/api/photos', async () => {
+    const photos = await prisma.progressPhoto.findMany({ include: { analyses: { orderBy: { createdAt: 'desc' }, take: 1 } }, orderBy: { createdAt: 'desc' }, take: 24 });
+    return { photos: photos.map(serializePhoto) };
+  });
+
+  app.post('/api/photos', async (request, reply) => {
+    const parsed = photoSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Foto inválida.', issues: parsed.error.flatten() });
+    const upload = parsed.data.imageDataUrl ? await uploadToCloudinary(parsed.data.imageDataUrl) : { imageUrl: parsed.data.imageUrl!, publicId: null };
+    const photo = await prisma.progressPhoto.create({
+      data: { date: parseDateOnly(parsed.data.date), angle: parsed.data.angle, imageUrl: upload.imageUrl, publicId: upload.publicId, notes: parsed.data.notes }
+    });
+    return { photo: serializePhoto(photo) };
+  });
+
+  app.post('/api/photos/:id/analyze', async (request, reply) => {
+    const params = z.object({ id: z.string() }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: 'Foto inválida.' });
+    const photo = await prisma.progressPhoto.findUnique({ where: { id: params.data.id } });
+    if (!photo) return reply.code(404).send({ message: 'Foto no encontrada.' });
+    const analysis = await prisma.bodyAnalysis.create({
+      data: {
+        photoId: photo.id,
+        summary: 'Análisis inicial guardado. La IA visual se activará cuando estén configuradas las API keys; mientras tanto usá esta foto como línea base de comparación.',
+        focusAreas: ['hombros', 'pecho', 'espalda'],
+        recommendations: ['Compará siempre con misma luz, distancia y postura.', 'Usá el volumen semanal para decidir foco muscular, no una sola foto aislada.', 'Si una zona queda rezagada, priorizá técnica y progresión antes de sumar ejercicios.'],
+        postureNotes: ['Frente, lateral y espalda permiten una lectura más consistente que una sola imagen.'],
+        source: process.env.OPENAI_API_KEY ? 'openai-ready' : 'rules'
+      }
+    });
+    return { analysis };
+  });
+
+  app.get('/api/challenges/today', async () => {
+    const date = parseDateOnly(formatDateOnly(new Date()));
+    const cycleDay = getCycleDay();
+    const suggested = buildDailyChallenge(date, cycleDay);
+    const challenge = await prisma.dailyChallenge.upsert({
+      where: { date_category: { date, category: suggested.category } },
+      update: {},
+      create: { date, ...suggested }
+    });
+    return { challenge: { ...challenge, date: formatDateOnly(challenge.date) } };
+  });
+
   app.get('/api/exercises/:id/metadata', async (request, reply) => {
     const params = z.object({ id: z.string() }).safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: 'Ejercicio inválido.' });
@@ -387,7 +711,7 @@ export async function registerRoutes(app: FastifyInstance) {
     const params = z.object({ id: z.string() }).safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: 'Ejercicio inválido.' });
 
-    const logs = await prisma.setLog.findMany({ where: { exerciseId: params.data.id }, orderBy: [{ cycleDate: 'desc' }, { setNumber: 'asc' }] });
+    const logs = await prisma.setLog.findMany({ where: { exerciseId: params.data.id, setType: 'working' }, orderBy: [{ cycleDate: 'desc' }, { setNumber: 'asc' }] });
     const serialized = logs.map((log) => serializeLog(log) as ReturnType<typeof serializeLog> & { reps: number });
     const bestWeight = serialized.reduce((best, log) => Math.max(best, Number(log.weightKg)), 0);
     const bestReps = serialized.reduce((best, log) => Math.max(best, Number(log.reps)), 0);
@@ -410,7 +734,7 @@ export async function registerRoutes(app: FastifyInstance) {
     const to = parseDateOnly(query.data.to ?? today);
     const from = query.data.from ? parseDateOnly(query.data.from) : new Date(to.getTime() - 6 * 86_400_000);
     const logs = await prisma.setLog.findMany({
-      where: { cycleDate: { gte: from, lte: to } },
+      where: { cycleDate: { gte: from, lte: to }, setType: 'working' },
       include: { exercise: { include: { metadata: true } } }
     });
 

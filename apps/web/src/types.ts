@@ -1,4 +1,4 @@
-﻿export interface ExerciseMetadata {
+export interface ExerciseMetadata {
   id: string;
   exerciseId: string;
   kind: 'compound' | 'isolation';
@@ -44,15 +44,20 @@ export interface TrainingDay {
 export interface SetLog {
   id: string;
   exerciseId: string;
+  sessionId?: string | null;
   cycleDay: number;
   cycleDate: string;
   setNumber: number;
+  setType?: 'working' | 'approach';
+  approachOrder?: number | null;
   weightKg: number;
   reps: number;
   rir?: number | null;
   actualRpe?: number | null;
   techniqueStatus?: 'clean' | 'grindy' | 'compensated' | null;
   tempo?: string | null;
+  tempoSeconds?: number | null;
+  holdSeconds?: number | null;
   painLevel?: number | null;
   notes?: string | null;
   restTakenSeconds?: number | null;
@@ -100,4 +105,88 @@ export interface BodyMetric {
   bodyWeightKg: number;
   proteinGrams: number;
   notes?: string | null;
+}
+
+export interface CoachRecommendation {
+  id: string;
+  exerciseId?: string | null;
+  cycleDay?: number | null;
+  cycleDate?: string | null;
+  title: string;
+  message: string;
+  reason: string;
+  action: string;
+  source: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface FoodItem {
+  id: string;
+  name: string;
+  serving: string;
+  proteinGrams: number;
+  calories: number;
+  category: string;
+  budget: boolean;
+  notes?: string | null;
+}
+
+export interface NutritionLog {
+  id: string;
+  date: string;
+  meal: string;
+  foodName: string;
+  quantity: number;
+  proteinGrams: number;
+  calories: number;
+  notes?: string | null;
+}
+
+export interface HabitGoal {
+  id: string;
+  key: string;
+  label: string;
+  target: string;
+  active: boolean;
+  order: number;
+}
+
+export interface HabitLog {
+  id: string;
+  goalKey: string;
+  date: string;
+  completed: boolean;
+  value?: string | null;
+  notes?: string | null;
+}
+
+export interface BodyAnalysis {
+  id: string;
+  photoId: string;
+  summary: string;
+  focusAreas: string[];
+  recommendations: string[];
+  postureNotes: string[];
+  source: string;
+  createdAt: string;
+}
+
+export interface ProgressPhoto {
+  id: string;
+  date: string;
+  angle: 'front' | 'side' | 'back';
+  imageUrl: string;
+  publicId?: string | null;
+  notes?: string | null;
+  analyses?: BodyAnalysis[];
+}
+
+export interface DailyChallenge {
+  id: string;
+  date: string;
+  title: string;
+  description: string;
+  category: string;
+  completed: boolean;
 }

@@ -48,22 +48,43 @@ model SetLog {
   id          String   @id @default(cuid())
   exerciseId  String
   exercise    Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  sessionId   String?
+  session     WorkoutSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   cycleDay    Int
   cycleDate   DateTime @db.Date
   setNumber   Int
+  setType     String   @default("working")
+  approachOrder Int?
   weightKg    Decimal  @db.Decimal(6, 2)
   reps        Int
   rir         Int?
   actualRpe   Int?
   techniqueStatus String?
   tempo       String?
+  tempoSeconds Int?
+  holdSeconds Int?
   painLevel   Int?
   notes       String?
   restTakenSeconds Int?
   completedAt DateTime @default(now())
 
-  @@unique([exerciseId, cycleDate, setNumber])
+  @@unique([exerciseId, cycleDate, setType, setNumber])
   @@index([cycleDate, cycleDay])
+  @@index([sessionId])
+}
+
+model WorkoutSession {
+  id          String   @id @default(cuid())
+  cycleDay    Int
+  cycleDate   DateTime @db.Date
+  status      String   @default("active")
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  notes       String?
+  logs        SetLog[]
+
+  @@unique([cycleDay, cycleDate])
+  @@index([status, startedAt])
 }
 
 model PlanTemplate {
@@ -131,4 +152,112 @@ model ProgressionSuggestion {
   @@unique([exerciseId, evaluatedCycleDate])
   @@index([status, createdAt])
   @@index([exerciseId, status])
+}
+
+model CoachRecommendation {
+  id          String   @id @default(cuid())
+  exerciseId  String?
+  cycleDay    Int?
+  cycleDate   DateTime? @db.Date
+  scope       String   @default("daily")
+  title       String
+  message     String
+  reason      String
+  action      String
+  source      String   @default("rules")
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+
+  @@index([cycleDate, scope])
+  @@index([exerciseId, createdAt])
+}
+
+model FoodItem {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  serving     String
+  proteinGrams Decimal @db.Decimal(6, 2)
+  calories    Int
+  category    String
+  budget      Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+model NutritionLog {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  meal        String
+  foodName    String
+  quantity    Decimal  @db.Decimal(6, 2) @default(1)
+  proteinGrams Decimal @db.Decimal(6, 2)
+  calories    Int
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+}
+
+model HabitGoal {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  target      String
+  active      Boolean  @default(true)
+  order       Int      @default(1)
+  createdAt   DateTime @default(now())
+}
+
+model HabitLog {
+  id          String   @id @default(cuid())
+  goalKey     String
+  date        DateTime @db.Date
+  completed   Boolean  @default(false)
+  value       String?
+  notes       String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([goalKey, date])
+  @@index([date])
+}
+
+model ProgressPhoto {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  angle       String
+  imageUrl    String
+  publicId    String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  analyses    BodyAnalysis[]
+
+  @@index([date])
+}
+
+model BodyAnalysis {
+  id          String   @id @default(cuid())
+  photoId     String
+  photo       ProgressPhoto @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  summary     String
+  focusAreas  String[]
+  recommendations String[]
+  postureNotes String[]
+  source      String   @default("rules")
+  createdAt   DateTime @default(now())
+
+  @@index([photoId, createdAt])
+}
+
+model DailyChallenge {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  title       String
+  description String
+  category    String
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, category])
 }

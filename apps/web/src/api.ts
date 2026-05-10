@@ -1,4 +1,4 @@
-﻿import type { BodyMetric, ExerciseHistory, ExerciseMetadata, ProgressionAnalytics, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics } from './types';
+import type { BodyAnalysis, BodyMetric, CoachRecommendation, DailyChallenge, ExerciseHistory, ExerciseMetadata, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionAnalytics, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
@@ -25,12 +25,16 @@ export async function saveSet(input: {
   cycleDay: number;
   cycleDate: string;
   setNumber: number;
+  setType?: 'working' | 'approach';
+  approachOrder?: number;
   weightKg: number;
   reps: number;
   rir?: number;
   actualRpe?: number;
   techniqueStatus?: 'clean' | 'grindy' | 'compensated';
   tempo?: string;
+  tempoSeconds?: number;
+  holdSeconds?: number;
   painLevel?: number;
   notes?: string;
   restTakenSeconds?: number;
@@ -87,4 +91,51 @@ export async function saveActivePlan(input: { name: string; days: TrainingDay[] 
 
 export async function resetPlanToTemplate(): Promise<{ plan: unknown; days: TrainingDay[] }> {
   return api('/api/plans/reset-to-template', { method: 'POST' });
+}
+export async function saveApproachSet(input: Parameters<typeof saveSet>[0] & { approachOrder: number }): Promise<{ log: SetLog; restSeconds: number; next: unknown }> {
+  return api('/api/logs/approach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...input, setType: 'approach' }) });
+}
+
+export async function startSession(input: { cycleDay: number; cycleDate: string; notes?: string }): Promise<{ session: unknown }> {
+  return api('/api/sessions/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+}
+
+export async function getCoachToday(): Promise<{ recommendation: CoachRecommendation }> {
+  return api('/api/coach/today');
+}
+
+export async function recalculateCoach(): Promise<{ recommendation: CoachRecommendation }> {
+  return api('/api/coach/recalculate', { method: 'POST' });
+}
+
+export async function getNutritionToday(): Promise<{ date: string; targetProtein: { min: number; max: number }; proteinTotal: number; caloriesTotal: number; remainingProtein: number; logs: NutritionLog[]; foods: FoodItem[] }> {
+  return api('/api/nutrition/today');
+}
+
+export async function saveNutritionLog(input: { date: string; meal: string; foodName: string; quantity?: number; proteinGrams: number; calories: number; notes?: string }): Promise<{ log: NutritionLog }> {
+  return api('/api/nutrition/logs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+}
+
+export async function getHabitsToday(): Promise<{ date: string; goals: HabitGoal[]; logs: HabitLog[] }> {
+  return api('/api/habits/today');
+}
+
+export async function checkHabit(input: { date: string; goalKey: string; completed: boolean; value?: string; notes?: string }): Promise<{ log: HabitLog }> {
+  return api('/api/habits/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+}
+
+export async function getPhotos(): Promise<{ photos: ProgressPhoto[] }> {
+  return api('/api/photos');
+}
+
+export async function savePhoto(input: { date: string; angle: 'front' | 'side' | 'back'; imageDataUrl?: string; imageUrl?: string; notes?: string }): Promise<{ photo: ProgressPhoto }> {
+  return api('/api/photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+}
+
+export async function analyzePhoto(id: string): Promise<{ analysis: BodyAnalysis }> {
+  return api(`/api/photos/${id}/analyze`, { method: 'POST' });
+}
+
+export async function getChallengeToday(): Promise<{ challenge: DailyChallenge }> {
+  return api('/api/challenges/today');
 }

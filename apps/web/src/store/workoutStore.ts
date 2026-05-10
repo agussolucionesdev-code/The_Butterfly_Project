@@ -10,9 +10,10 @@ interface WorkoutState {
 }
 
 function derivePosition(day: TrainingDay, logs: SetLog[]) {
+  const workingLogs = logs.filter((log) => (log.setType ?? 'working') === 'working');
   for (const [exerciseIndex, exercise] of day.exercises.entries()) {
     for (let setNumber = 1; setNumber <= exercise.sets; setNumber++) {
-      if (!logs.some((log) => log.exerciseId === exercise.id && log.setNumber === setNumber)) return { exerciseIndex, setNumber, completed: false };
+      if (!workingLogs.some((log) => log.exerciseId === exercise.id && log.setNumber === setNumber)) return { exerciseIndex, setNumber, completed: false };
     }
   }
   return { exerciseIndex: 0, setNumber: 1, completed: day.exercises.length > 0 };
@@ -31,5 +32,5 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   skipTimer: () => get().advance(),
   advance: () => { const { day, exerciseIndex, setNumber } = get(); if (!day) return; const exercise = day.exercises[exerciseIndex]; if (!exercise) return set({ completed: true, timerActive: false, timerSeconds: 0 }); if (setNumber < exercise.sets) return set({ setNumber: setNumber + 1, timerActive: false, timerSeconds: 0, timerPaused: false }); if (exerciseIndex < day.exercises.length - 1) return set({ exerciseIndex: exerciseIndex + 1, setNumber: 1, timerActive: false, timerSeconds: 0, timerPaused: false }); set({ completed: true, timerActive: false, timerSeconds: 0, timerPaused: false }); },
   getCurrentExercise: () => { const { day, exerciseIndex, completed } = get(); if (!day || completed) return null; return day.exercises[exerciseIndex] ?? null; },
-  getPreviousSet: () => { const { logs, getCurrentExercise, setNumber } = get(); const exercise = getCurrentExercise(); if (!exercise || setNumber <= 1) return undefined; return logs.find((log) => log.exerciseId === exercise.id && log.setNumber === setNumber - 1); }
+  getPreviousSet: () => { const { logs, getCurrentExercise, setNumber } = get(); const exercise = getCurrentExercise(); if (!exercise || setNumber <= 1) return undefined; return logs.find((log) => log.exerciseId === exercise.id && log.setNumber === setNumber - 1 && (log.setType ?? 'working') === 'working'); }
 }));
