@@ -398,7 +398,7 @@ export function App() {
     });
 
     setMetrics([response.metric, ...metrics.filter((metric) => metric.date !== response.metric.date)]);
-    setStatusNotice('Body metrics guardados para hoy.');
+    setStatusNotice('Métricas corporales guardadas para hoy.');
   }
 
   async function resolveSuggestion(id: string, accepted: boolean) {
@@ -530,7 +530,7 @@ export function App() {
             </div>
             <div className="grid grid-cols-2 gap-3 mt-4">
               <button className="btn-secondary" onClick={applyCustomTimer}>Aplicar tiempo</button>
-              <button className="btn-secondary" onClick={store.resetTimer}><RotateCcw size={16} /> Reset</button>
+              <button className="btn-secondary" onClick={store.resetTimer}><RotateCcw size={16} /> Reiniciar</button>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 w-full max-w-md">
@@ -831,7 +831,7 @@ export function App() {
 
             <aside className="grid gap-4">
               <div className="surface-card p-4">
-                <p className="section-label mb-3">Readiness</p>
+                <p className="section-label mb-3">Preparación</p>
                 <div className="grid gap-3">
                   <div className="metric"><span>Sets pendientes</span><strong>{remainingSets}</strong></div>
                   <div className="metric"><span>Proteína faltante</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap} g` : '0 g'}</strong></div>
