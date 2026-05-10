@@ -127,8 +127,8 @@ async function main() {
       if (metadata) {
         await prisma.exerciseMetadata.upsert({
           where: { exerciseId: savedExercise.id },
-          update: { ...metadata, videoUrl: videoUrl(exercise.name), referenceUrl: metadata.referenceUrl  referenceUrl(exercise.name), referenceLabel: metadata.referenceLabel  'Referencia ExRx' },
-          create: { exerciseId: savedExercise.id, ...metadata, videoUrl: videoUrl(exercise.name), referenceUrl: metadata.referenceUrl  referenceUrl(exercise.name), referenceLabel: metadata.referenceLabel  'Referencia ExRx' }
+          update: { ...metadata, videoUrl: videoUrl(exercise.name), referenceUrl: metadata.referenceUrl ?? referenceUrl(exercise.name), referenceLabel: metadata.referenceLabel ?? 'Referencia ExRx' },
+          create: { exerciseId: savedExercise.id, ...metadata, videoUrl: videoUrl(exercise.name), referenceUrl: metadata.referenceUrl ?? referenceUrl(exercise.name), referenceLabel: metadata.referenceLabel ?? 'Referencia ExRx' }
         });
       }
     }
