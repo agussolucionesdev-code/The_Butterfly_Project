@@ -25,7 +25,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   startTimer: (seconds) => set({ timerSeconds: Math.max(0, seconds), timerInitialSeconds: Math.max(0, seconds), timerActive: seconds > 0, timerPaused: false }),
   tickTimer: () => { const state = get(); if (!state.timerActive || state.timerPaused) return; if (state.timerSeconds <= 1) { navigator.vibrate?.(250); get().advance(); return; } set({ timerSeconds: state.timerSeconds - 1 }); },
   addTimerSeconds: (seconds) => set((state) => ({ timerSeconds: Math.max(0, state.timerSeconds + seconds) })),
-  setTimerSeconds: (seconds) => set({ timerSeconds: Math.max(0, seconds) }),
+  setTimerSeconds: (seconds) => set({ timerSeconds: Math.max(0, seconds), timerInitialSeconds: Math.max(0, seconds) }),
   resetTimer: () => set((state) => ({ timerSeconds: state.timerInitialSeconds })),
   togglePause: () => set((state) => ({ timerPaused: !state.timerPaused })),
   skipTimer: () => get().advance(),

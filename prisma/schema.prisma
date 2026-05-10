@@ -31,6 +31,9 @@ model Exercise {
   active        Boolean     @default(true)
   plannedWeightKg Decimal?  @db.Decimal(6, 2)
   plannedRepGoal Int?
+  lastProgressionReason String?
+  lastProgressionAction String?
+  lastProgressionAt DateTime?
   order         Int
   logs          SetLog[]
   metadata      ExerciseMetadata?
@@ -52,6 +55,7 @@ model SetLog {
   reps        Int
   rir         Int?
   actualRpe   Int?
+  techniqueStatus String?
   tempo       String?
   painLevel   Int?
   notes       String?
@@ -90,6 +94,8 @@ model ExerciseMetadata {
   secondaryMuscles      String[]
   stabilizerMuscles     String[]
   videoUrl              String
+  referenceUrl          String?
+  referenceLabel        String?
   instructions          String[]
   commonMistakes        String[]
   technicalCues         String[]
@@ -112,12 +118,17 @@ model ProgressionSuggestion {
   id              String   @id @default(cuid())
   exerciseId      String
   exercise        Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  evaluatedCycleDate DateTime @db.Date
   reason          String
   action          String
   status          String   @default("pending")
+  autoApplied     Boolean  @default(false)
+  targetWeightKg  Decimal? @db.Decimal(6, 2)
+  targetRepGoal   Int?
   createdAt       DateTime @default(now())
   resolvedAt      DateTime?
 
+  @@unique([exerciseId, evaluatedCycleDate])
   @@index([status, createdAt])
   @@index([exerciseId, status])
 }

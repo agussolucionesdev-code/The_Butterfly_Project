@@ -1,6 +1,39 @@
-import { Activity, BarChart3, BookOpen, ChevronLeft, ChevronRight, Clock3, Lock, Plus, RotateCcw, Save, Target, Timer, TrendingUp, Zap } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  BookOpen,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Lock,
+  Plus,
+  RotateCcw,
+  Save,
+  Target,
+  Timer,
+  TrendingUp,
+  Zap
+} from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { acceptProgression, getActivePlan, getBodyMetrics, getDay, getExerciseHistory, getLogs, getProgressionSuggestions, getToday, getVolumeAnalytics, rejectProgression, resetDayLogs, resetPlanToTemplate, saveActivePlan, saveBodyMetric, saveSet } from './api';
+import {
+  acceptProgression,
+  getActivePlan,
+  getBodyMetrics,
+  getDay,
+  getExerciseHistory,
+  getLogs,
+  getProgressionSuggestions,
+  getToday,
+  getVolumeAnalytics,
+  rejectProgression,
+  resetDayLogs,
+  resetPlanToTemplate,
+  saveActivePlan,
+  saveBodyMetric,
+  saveSet
+} from './api';
 import { useWorkoutStore } from './store/workoutStore';
 import type { BodyMetric, Exercise, ExerciseHistory, ProgressionSuggestion, TrainingDay, VolumeAnalytics } from './types';
 import { getEstimatedVolume, getWorkoutProgress, resolveCycleDate } from './utils/workout';
@@ -8,27 +41,28 @@ import { getEstimatedVolume, getWorkoutProgress, resolveCycleDate } from './util
 const MUSCLE_LABELS: Record<string, string> = {
   chest: 'Pecho',
   upper_chest: 'Pecho superior',
-  front_delts: 'Deltoide ant.',
-  side_delts: 'Deltoide lat.',
-  rear_delts: 'Deltoide post.',
+  front_delts: 'Deltoide anterior',
+  side_delts: 'Deltoide lateral',
+  rear_delts: 'Deltoide posterior',
   shoulders: 'Hombros',
-  triceps: 'Triceps',
-  biceps: 'Biceps',
+  triceps: 'Tríceps',
+  biceps: 'Bíceps',
   forearms: 'Antebrazo',
   lats: 'Dorsal',
   upper_back: 'Espalda alta',
   traps: 'Trapecio',
-  quads: 'Cuadriceps',
+  quads: 'Cuádriceps',
   hamstrings: 'Isquios',
-  glutes: 'Gluteos',
+  glutes: 'Glúteos',
   calves: 'Pantorrillas',
   abs: 'Abdominales',
   core: 'Core',
   spinal_erectors: 'Erectores',
-  hip_flexors: 'Flexores cadera'
+  hip_flexors: 'Flexores de cadera'
 };
 
 type TabKey = 'flow' | 'dashboard' | 'analytics' | 'plan';
+type TechniqueStatus = 'clean' | 'grindy' | 'compensated';
 
 function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
@@ -52,21 +86,31 @@ function topEntries(record: Record<string, number>, count = 5) {
 }
 
 function lowEntries(record: Record<string, number>, count = 3) {
-  return Object.entries(record).sort((a, b) => a[1] - b[1]).slice(0, count);
+  return Object.entries(record)
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, count);
 }
 
 function formatBestSet(history: ExerciseHistory | null) {
   if (!history || history.bestWeight <= 0 || history.bestReps <= 0) return 'Sin historial';
-  return `${history.bestWeight}kg x ${history.bestReps}`;
+  return `${history.bestWeight} kg x ${history.bestReps}`;
 }
 
 function formatEquivalentSet(log?: ExerciseHistory['latestLogs'][number]) {
   if (!log) return 'Sin dato';
-  return `${log.weightKg}kg x ${log.reps}`;
+  return `${log.weightKg} kg x ${log.reps}`;
+}
+
+function formatTechnique(status?: TechniqueStatus | null) {
+  if (status === 'clean') return 'Limpia';
+  if (status === 'grindy') return 'Muy exigida';
+  if (status === 'compensated') return 'Compensada';
+  return 'Sin dato';
 }
 
 function dayLabel(cycleDay: number) {
-  return `Dia ${cycleDay}`;
+  return `Día ${cycleDay}`;
 }
 
 function buildYoutubeSearchUrl(exerciseName: string) {
@@ -85,28 +129,29 @@ function resolveVideoResource(videoUrl: string | null | undefined, exerciseName:
   const fallbackWatchUrl = buildYoutubeSearchUrl(exerciseName);
 
   if (!videoUrl || videoUrl.includes('youtube.com/embed?listType=search')) {
-    return {
-      embedUrl: null,
-      watchUrl: fallbackWatchUrl
-    };
+    return { embedUrl: null, watchUrl: fallbackWatchUrl };
   }
 
-  return {
-    embedUrl: videoUrl,
-    watchUrl: fallbackWatchUrl
-  };
+  return { embedUrl: videoUrl, watchUrl: fallbackWatchUrl };
 }
 
 function AnatomyMap({ exercise }: { exercise: Exercise | null }) {
   const primary = new Set(exercise?.metadata?.primaryMuscles ?? []);
   const secondary = new Set(exercise?.metadata?.secondaryMuscles ?? []);
-  const fill = (muscle: string) => primary.has(muscle) ? '#CCFF00' : secondary.has(muscle) ? '#94A3B8' : '#1A1A1A';
+  const stabilizers = new Set(exercise?.metadata?.stabilizerMuscles ?? []);
+
+  const fill = (muscle: string) => {
+    if (primary.has(muscle)) return '#CCFF00';
+    if (secondary.has(muscle)) return '#94A3B8';
+    if (stabilizers.has(muscle)) return '#5B6473';
+    return '#161616';
+  };
 
   return (
-    <div className="surface-card p-3">
-      <p className="text-xs uppercase tracking-[0.25em] text-steel mb-2">Mapa muscular</p>
+    <div className="surface-card p-4">
+      <p className="section-label">Mapa muscular</p>
       <svg viewBox="0 0 220 320" className="mx-auto h-72 w-full max-w-[260px]">
-        <circle cx="110" cy="28" r="18" fill="#1A1A1A" stroke="#2A2A2A" />
+        <circle cx="110" cy="28" r="18" fill="#161616" stroke="#2A2A2A" />
         <rect x="82" y="50" width="56" height="74" rx="18" fill={fill('chest')} stroke="#2A2A2A" />
         <rect x="72" y="54" width="18" height="56" rx="9" fill={fill('front_delts')} stroke="#2A2A2A" />
         <rect x="130" y="54" width="18" height="56" rx="9" fill={fill('front_delts')} stroke="#2A2A2A" />
@@ -117,14 +162,20 @@ function AnatomyMap({ exercise }: { exercise: Exercise | null }) {
         <rect x="116" y="178" width="28" height="74" rx="11" fill={fill('quads')} stroke="#2A2A2A" />
         <rect x="78" y="254" width="24" height="44" rx="10" fill={fill('calves')} stroke="#2A2A2A" />
         <rect x="118" y="254" width="24" height="44" rx="10" fill={fill('calves')} stroke="#2A2A2A" />
-        <rect x="18" y="54" width="44" height="92" rx="16" fill={fill('lats')} stroke="#2A2A2A" opacity="0.9" />
-        <rect x="158" y="54" width="44" height="92" rx="16" fill={fill('upper_back')} stroke="#2A2A2A" opacity="0.9" />
-        <rect x="78" y="178" width="64" height="40" rx="16" fill={fill('glutes')} stroke="#2A2A2A" opacity="0.5" />
-        <rect x="76" y="216" width="68" height="32" rx="14" fill={fill('hamstrings')} stroke="#2A2A2A" opacity="0.65" />
+        <rect x="18" y="54" width="44" height="92" rx="16" fill={fill('lats')} stroke="#2A2A2A" opacity="0.95" />
+        <rect x="158" y="54" width="44" height="92" rx="16" fill={fill('upper_back')} stroke="#2A2A2A" opacity="0.95" />
+        <rect x="78" y="178" width="64" height="40" rx="16" fill={fill('glutes')} stroke="#2A2A2A" opacity="0.8" />
+        <rect x="76" y="216" width="68" height="32" rx="14" fill={fill('hamstrings')} stroke="#2A2A2A" opacity="0.8" />
       </svg>
-      <div className="grid gap-2 text-xs text-steel">
+      <div className="mt-3 grid gap-2 text-xs text-steel">
         <p><span className="text-volt">Primarios:</span> {(exercise?.metadata?.primaryMuscles ?? []).map(muscleName).join(', ') || 'Sin datos'}</p>
         <p><span className="text-white">Secundarios:</span> {(exercise?.metadata?.secondaryMuscles ?? []).map(muscleName).join(', ') || 'Sin datos'}</p>
+        <p><span className="text-steel">Estabilizadores:</span> {(exercise?.metadata?.stabilizerMuscles ?? []).map(muscleName).join(', ') || 'Sin datos'}</p>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.16em] text-steel">
+        <span className="legend-chip"><span className="legend-dot bg-volt" />Primario</span>
+        <span className="legend-chip"><span className="legend-dot bg-steel" />Secundario</span>
+        <span className="legend-chip"><span className="legend-dot bg-[#5B6473]" />Estabiliza</span>
       </div>
     </div>
   );
@@ -136,6 +187,7 @@ export function App() {
   const [rir, setRir] = useState('');
   const [actualRpe, setActualRpe] = useState('');
   const [painLevel, setPainLevel] = useState('0');
+  const [techniqueStatus, setTechniqueStatus] = useState<TechniqueStatus>('clean');
   const [notes, setNotes] = useState('');
   const [timerMinutes, setTimerMinutes] = useState('0');
   const [timerSecondsInput, setTimerSecondsInput] = useState('0');
@@ -143,6 +195,7 @@ export function App() {
   const [currentCycleDay, setCurrentCycleDay] = useState(1);
   const [currentCycleDate, setCurrentCycleDate] = useState('');
   const [error, setError] = useState('');
+  const [statusNotice, setStatusNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resettingDay, setResettingDay] = useState(false);
@@ -151,6 +204,7 @@ export function App() {
   const [history, setHistory] = useState<ExerciseHistory | null>(null);
   const [volume, setVolume] = useState<VolumeAnalytics | null>(null);
   const [suggestions, setSuggestions] = useState<ProgressionSuggestion[]>([]);
+  const [latestApplied, setLatestApplied] = useState<ProgressionSuggestion[]>([]);
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
   const [metricWeight, setMetricWeight] = useState('77.78');
   const [metricProtein, setMetricProtein] = useState('160');
@@ -164,32 +218,41 @@ export function App() {
   const estimatedVolume = useMemo(() => getEstimatedVolume(store.logs), [store.logs]);
   const viewedCycleDay = selectedCycleDay ?? currentCycleDay;
   const isViewingToday = viewedCycleDay === currentCycleDay;
-  const totalExercises = store.day?.exercises.length ?? 0;
-  const nextExerciseName = store.day && exercise ? store.day.exercises[store.exerciseIndex + 1]?.name ?? 'Workout complete' : 'Workout complete';
-  const latestMetric = metrics[0];
+  const nextExerciseName = store.day && exercise ? store.day.exercises[store.exerciseIndex + 1]?.name ?? 'Sesión completa' : 'Sesión completa';
+  const metricForToday = metrics.find((metric) => metric.date === todayIso()) ?? null;
+  const latestMetric = metricForToday ?? metrics[0] ?? null;
   const bodyProgress = latestMetric ? Math.min(100, Math.max(0, ((latestMetric.bodyWeightKg - 77.78) / (83 - 77.78)) * 100)) : 0;
   const strongestMuscles = topEntries(volume?.byMuscle ?? {}, 3);
-  const weakestMuscles = lowEntries(volume?.byMuscle ?? {}, 3).filter(([, value]) => value > 0);
+  const weakestMuscles = lowEntries(volume?.byMuscle ?? {}, 3);
   const currentSuggestion = suggestions.find((item) => item.exerciseId === exercise?.id);
+  const lastAppliedForCurrentExercise = latestApplied.find((item) => item.exerciseId === exercise?.id);
   const lastEquivalentSet = useMemo(() => history?.latestLogs.find((log) => log.setNumber === store.setNumber), [history, store.setNumber]);
   const recommendedWeight = exercise?.plannedWeightKg ?? null;
   const recommendedReps = exercise?.plannedRepGoal ?? null;
   const videoResource = resolveVideoResource(exercise?.metadata?.videoUrl, exercise?.name ?? '');
   const remainingSets = Math.max(0, progress.totalSets - progress.completedSets);
-  const proteinToday = latestMetric?.proteinGrams ?? 0;
+  const proteinToday = metricForToday?.proteinGrams ?? 0;
   const proteinFloorGap = Math.max(0, 160 - proteinToday);
   const proteinTopGap = Math.max(0, 175 - proteinToday);
   const todayVolume = volume?.byDay?.[store.cycleDate] ?? 0;
+  const nextCoachCue = exercise?.metadata?.technicalCues?.[0] ?? 'Mantené la técnica estable.';
+  const nextCoachMistake = exercise?.metadata?.commonMistakes?.[0] ?? 'No compenses el patrón por cargar de más.';
+  const firstExerciseFocus = store.day?.exercises[0]?.metadata?.technicalCues?.[0] ?? 'Cargá peso y proteína antes de arrancar.';
 
   async function refreshCoachData(currentExercise = exercise) {
     const [volumeResponse, progressionResponse] = await Promise.all([
       getVolumeAnalytics(),
       getProgressionSuggestions()
     ]);
+
     setVolume(volumeResponse.volume);
     setSuggestions(progressionResponse.suggestions);
+    setLatestApplied(progressionResponse.latestApplied);
+
     if (currentExercise) {
       setHistory((await getExerciseHistory(currentExercise.id)).history);
+    } else {
+      setHistory(null);
     }
   }
 
@@ -202,7 +265,7 @@ export function App() {
       getLogs(targetDate)
     ]);
 
-    if (dayResponse.locked) throw new Error('Future training days are locked.');
+    if (dayResponse.locked) throw new Error('Los días futuros están bloqueados.');
 
     store.setWorkout(nextCycleDay, targetDate, dayResponse.day, logsResponse.logs);
     setCurrentCycleDay(today.cycleDay);
@@ -219,7 +282,7 @@ export function App() {
         setMetrics(body.metrics);
         await refreshCoachData();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to initialize workout.');
+        setError(err instanceof Error ? err.message : 'No pude inicializar la consola de entrenamiento.');
       } finally {
         setLoading(false);
       }
@@ -243,6 +306,12 @@ export function App() {
     }
   }, [exercise?.id]);
 
+  useEffect(() => {
+    if (!statusNotice) return;
+    const id = window.setTimeout(() => setStatusNotice(''), 4500);
+    return () => window.clearTimeout(id);
+  }, [statusNotice]);
+
   async function handleDaySelection(targetCycleDay: number) {
     if (targetCycleDay > currentCycleDay || targetCycleDay === viewedCycleDay) return;
     setError('');
@@ -251,8 +320,9 @@ export function App() {
     try {
       await loadWorkoutForDay(targetCycleDay);
       await refreshCoachData();
+      setStatusNotice(targetCycleDay === currentCycleDay ? 'Volviste a tu sesión actual.' : `Cargué el historial del día ${targetCycleDay}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not switch training day.');
+      setError(err instanceof Error ? err.message : 'No pude cambiar de día.');
     } finally {
       setSwitchingDay(false);
     }
@@ -260,12 +330,14 @@ export function App() {
 
   function applyCustomTimer() {
     store.setTimerSeconds(Math.max(0, Math.floor(clampNumericInput(timerMinutes))) * 60 + Math.min(59, Math.max(0, Math.floor(clampNumericInput(timerSecondsInput)))));
+    setStatusNotice('Timer manual aplicado.');
   }
 
   function useGhostSetValues() {
     if (!previousSet) return;
     setWeightKg(String(previousSet.weightKg));
     setReps(String(previousSet.reps));
+    setStatusNotice('Reutilicé los valores del ghost set.');
   }
 
   async function onSubmit(event: FormEvent) {
@@ -275,7 +347,7 @@ export function App() {
     const parsedWeight = Number(weightKg);
     const parsedReps = Number(reps);
     if (!(parsedWeight > 0) || !(parsedReps > 0)) {
-      setError('Weight and reps must be positive values.');
+      setError('Peso y reps tienen que ser positivos.');
       return;
     }
 
@@ -291,6 +363,7 @@ export function App() {
         reps: parsedReps,
         rir: rir ? Number(rir) : undefined,
         actualRpe: actualRpe ? Number(actualRpe) : undefined,
+        techniqueStatus,
         painLevel: painLevel ? Number(painLevel) : undefined,
         notes: notes || undefined,
         restTakenSeconds: store.timerInitialSeconds || undefined
@@ -302,13 +375,15 @@ export function App() {
       setRir('');
       setActualRpe('');
       setPainLevel('0');
+      setTechniqueStatus('clean');
       setNotes('');
       await refreshCoachData(exercise);
+      setStatusNotice(result.restSeconds > 0 ? 'Set guardado. Arranca el descanso.' : 'Set guardado. Seguís sin descanso.');
 
       if (result.restSeconds > 0) store.startTimer(result.restSeconds);
       else store.advance();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Set could not be saved.');
+      setError(err instanceof Error ? err.message : 'No pude guardar el set.');
     } finally {
       setSaving(false);
     }
@@ -323,6 +398,7 @@ export function App() {
     });
 
     setMetrics([response.metric, ...metrics.filter((metric) => metric.date !== response.metric.date)]);
+    setStatusNotice('Body metrics guardados para hoy.');
   }
 
   async function resolveSuggestion(id: string, accepted: boolean) {
@@ -330,10 +406,11 @@ export function App() {
     else await rejectProgression(id);
     await loadWorkoutForDay(viewedCycleDay);
     await refreshCoachData();
+    setStatusNotice(accepted ? 'Progresión aplicada.' : 'Progresión pospuesta.');
   }
 
   async function resetCurrentSession() {
-    const sessionLabel = isViewingToday ? 'la sesion de hoy' : `el dia ${viewedCycleDay}`;
+    const sessionLabel = isViewingToday ? 'la sesión de hoy' : `el día ${viewedCycleDay}`;
     if (!window.confirm(`Vas a borrar todos los sets guardados de ${sessionLabel} y volver a empezar desde cero. ¿Continuar?`)) return;
 
     setResettingDay(true);
@@ -346,12 +423,14 @@ export function App() {
       setRir('');
       setActualRpe('');
       setPainLevel('0');
+      setTechniqueStatus('clean');
       setNotes('');
       await loadWorkoutForDay(viewedCycleDay);
       await refreshCoachData();
       setActiveTab('flow');
+      setStatusNotice('Sesión reiniciada desde cero.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo reiniciar la sesion.');
+      setError(err instanceof Error ? err.message : 'No se pudo reiniciar la sesión.');
     } finally {
       setResettingDay(false);
     }
@@ -384,7 +463,7 @@ export function App() {
                   targetReps: '8-10',
                   rpe: '8',
                   restSeconds: 90,
-                  breath: 'Inhala / Exhala',
+                  breath: 'Inhalá / Exhalá',
                   warmup: false,
                   active: true,
                   order: day.exercises.length + 1
@@ -398,10 +477,11 @@ export function App() {
   async function persistPlan() {
     setPlanSaving(true);
     try {
-      const response = await saveActivePlan({ name: 'Agustin Active Plan', days: planDays });
+      const response = await saveActivePlan({ name: 'Agustín Active Plan', days: planDays });
       setPlanDays(response.days);
       await loadWorkoutForDay(viewedCycleDay);
       await refreshCoachData();
+      setStatusNotice('Plan guardado.');
     } finally {
       setPlanSaving(false);
     }
@@ -414,46 +494,49 @@ export function App() {
       setPlanDays(response.days);
       await loadWorkoutForDay(viewedCycleDay);
       await refreshCoachData();
+      setStatusNotice('Restauré la rutina base.');
     } finally {
       setPlanSaving(false);
     }
   }
 
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-obsidian text-volt font-mono">Cargando metamorfosis...</main>;
+    return <main className="grid min-h-screen place-items-center bg-obsidian text-volt font-mono">Cargando consola de entrenamiento…</main>;
   }
 
   if (store.timerActive) {
     return (
       <main className="app-shell flex min-h-screen flex-col items-center justify-center p-6 text-center text-white">
         <div className="hero-panel w-full max-w-3xl p-8">
-        <Timer className="mx-auto mb-6 text-volt" size={48} />
-        <p className="text-xs uppercase tracking-[0.4em] text-steel mb-3">Recuperacion activa</p>
-        <h1 className="font-mono text-7xl text-volt mb-4">{formatTime(store.timerSeconds)}</h1>
-        <p className="mx-auto mb-6 max-w-md text-steel">Siguiente paso: <strong className="text-white">{store.setNumber < (exercise?.sets ?? 0) ? `Set ${store.setNumber + 1}` : nextExerciseName}</strong></p>
-        <div className="grid grid-cols-3 gap-3 w-full max-w-md mb-4">
-          {[-20, -15, -10, 10, 15, 20].map((seconds) => (
-            <button key={seconds} className={`btn-secondary ${seconds < 0 ? 'text-red-200' : ''}`} onClick={() => store.addTimerSeconds(seconds)}>
-              {seconds > 0 ? `+${seconds}s` : `${seconds}s`}
-            </button>
-          ))}
-        </div>
-        <div className="surface-card mx-auto mb-4 w-full max-w-md p-4">
-          <p className="mb-3 text-xs uppercase tracking-[0.25em] text-steel">Timer manual</p>
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-            <label className="field text-left">Minutos<input value={timerMinutes} onChange={(event) => setTimerMinutes(event.target.value)} type="number" min="0" step="1" /></label>
-            <span className="font-mono text-2xl mt-6">:</span>
-            <label className="field text-left">Segundos<input value={timerSecondsInput} onChange={(event) => setTimerSecondsInput(event.target.value)} type="number" min="0" max="59" step="1" /></label>
+          <Timer className="mx-auto mb-6 text-volt" size={48} />
+          <p className="section-label mb-3">Recuperación activa</p>
+          <h1 className="font-mono text-7xl text-volt mb-4">{formatTime(store.timerSeconds)}</h1>
+          <p className="mx-auto mb-6 max-w-md text-steel">
+            Siguiente paso: <strong className="text-white">{store.setNumber < (exercise?.sets ?? 0) ? `Set ${store.setNumber + 1}` : nextExerciseName}</strong>
+          </p>
+          <div className="grid grid-cols-3 gap-3 w-full max-w-md mb-4">
+            {[-20, -15, -10, 10, 15, 20].map((seconds) => (
+              <button key={seconds} className={`btn-secondary ${seconds < 0 ? 'text-red-200' : ''}`} onClick={() => store.addTimerSeconds(seconds)}>
+                {seconds > 0 ? `+${seconds}s` : `${seconds}s`}
+              </button>
+            ))}
           </div>
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <button className="btn-secondary" onClick={applyCustomTimer}>Aplicar tiempo</button>
+          <div className="surface-card mx-auto mb-4 w-full max-w-md p-4">
+            <p className="section-label mb-3">Timer manual</p>
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+              <label className="field text-left">Minutos<input value={timerMinutes} onChange={(event) => setTimerMinutes(event.target.value)} type="number" min="0" step="1" /></label>
+              <span className="font-mono text-2xl mt-6">:</span>
+              <label className="field text-left">Segundos<input value={timerSecondsInput} onChange={(event) => setTimerSecondsInput(event.target.value)} type="number" min="0" max="59" step="1" /></label>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <button className="btn-secondary" onClick={applyCustomTimer}>Aplicar tiempo</button>
               <button className="btn-secondary" onClick={store.resetTimer}><RotateCcw size={16} /> Reset</button>
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 w-full max-w-md">
-          <button className="btn-primary" onClick={store.togglePause}>{store.timerPaused ? 'Continuar' : 'Pausar'}</button>
-          <button className="btn-secondary" onClick={store.skipTimer}>Saltar descanso</button>
-        </div>
+          <div className="grid grid-cols-2 gap-3 w-full max-w-md">
+            <button className="btn-primary" onClick={store.togglePause}>{store.timerPaused ? 'Continuar' : 'Pausar'}</button>
+            <button className="btn-secondary" onClick={store.skipTimer}>Saltar descanso</button>
+          </div>
         </div>
       </main>
     );
@@ -463,28 +546,36 @@ export function App() {
     <main className="app-shell min-h-screen p-4 text-white sm:p-8">
       <section className="mx-auto max-w-7xl">
         <header className="hero-panel mb-6 p-5 sm:p-7">
-          <div className="flex items-center gap-2 text-volt font-mono uppercase tracking-[0.3em] text-xs"><Zap size={16} /> The Butterfly Project</div>
-          <div className="flex items-start justify-between gap-4 mt-4 flex-wrap">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-extrabold sm:text-4xl">{store.day?.name ?? 'Training day'}</h1>
-              <p className="text-steel mt-2">Cycle day {store.cycleDay} - {store.cycleDate}</p>
-              {!isViewingToday && <p className="text-volt mt-2 text-sm">Mirando un dia anterior de este bloque.</p>}
-              <p className="mt-3 max-w-2xl text-sm text-steel">Esto tiene que sentirse como una consola de entrenamiento, no como un formulario suelto. Un ejercicio, un set, una decision clara.</p>
+              <div className="flex items-center gap-2 text-volt font-mono uppercase tracking-[0.3em] text-xs"><Zap size={14} /> The Butterfly Project</div>
+              <h1 className="mt-3 text-3xl font-mono text-white sm:text-4xl">{store.day?.name ?? 'Sin entrenamiento cargado'}</h1>
+              <p className="mt-2 max-w-2xl text-sm text-steel">
+                {isViewingToday ? 'Hoy entrenás en vivo.' : `Estás revisando el historial del día ${viewedCycleDay}.`} La app te marca qué hacer ahora, qué tocar después y cómo progresar sin improvisar.
+              </p>
             </div>
-            <div className="surface-card min-w-[260px] p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-steel mb-2">Progreso</p>
-              <p className="font-mono text-3xl text-volt">{progress.completedSets}/{progress.totalSets}</p>
-              <div className="h-2 bg-obsidian rounded mt-3 overflow-hidden"><div className="h-full bg-volt" style={{ width: `${progress.completionRatio * 100}%` }} /></div>
-              <p className="text-xs text-steel mt-3">Ejercicios: {totalExercises} - Volumen: {estimatedVolume.toFixed(1)} kg</p>
+            <div className="grid min-w-[240px] gap-3 sm:grid-cols-2">
+              <div className="metric metric-highlight">
+                <span>Día actual</span>
+                <strong>{dayLabel(currentCycleDay)}</strong>
+                <p className="mt-2 text-xs text-steel">Fecha base: {currentCycleDate || todayIso()}</p>
+              </div>
+              <div className="metric">
+                <span>Set en curso</span>
+                <strong>{store.completed ? 'Completo' : `${store.setNumber}/${exercise?.sets ?? 0}`}</strong>
+                <p className="mt-2 text-xs text-steel">{exercise?.name ?? 'Sin ejercicio activo'}</p>
+              </div>
             </div>
           </div>
+
           <div className="mt-5 grid gap-3 md:grid-cols-4">
-            <div className="metric metric-highlight"><span>Sets restantes</span><strong>{remainingSets}</strong></div>
-            <div className="metric"><span>Proteina pendiente</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap}g minimo` : 'Objetivo base cumplido'}</strong></div>
-            <div className="metric"><span>Volumen del dia</span><strong>{todayVolume.toFixed(0)} kg</strong></div>
-            <div className="metric"><span>Siguiente foco</span><strong>{exercise?.name ?? 'Resumen final'}</strong></div>
+            <div className="metric"><span>Sets listos</span><strong>{progress.completedSets}/{progress.totalSets}</strong></div>
+            <div className="metric"><span>Volumen del día</span><strong>{todayVolume.toFixed(0)} kg</strong></div>
+            <div className="metric"><span>Proteína hoy</span><strong>{proteinToday} g</strong></div>
+            <div className="metric"><span>Meta hacia 83 kg</span><strong>{latestMetric?.bodyWeightKg ?? 77.78} kg</strong></div>
           </div>
-          <div className="grid grid-cols-7 gap-2 mt-5">
+
+          <div className="mt-5 grid grid-cols-7 gap-2">
             {Array.from({ length: 7 }, (_, index) => index + 1).map((day) => {
               const locked = day > currentCycleDay;
               const selected = day === viewedCycleDay;
@@ -508,65 +599,66 @@ export function App() {
         </header>
 
         <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_auto]">
-        <nav className="surface-card grid grid-cols-2 gap-2 p-2 md:grid-cols-4">
-          {([
-            ['flow', 'Entreno'],
-            ['dashboard', 'Tablero'],
-            ['analytics', 'Analitica'],
-            ['plan', 'Plan']
-          ] as Array<[TabKey, string]>).map(([key, label]) => (
-            <button key={key} className={activeTab === key ? 'btn-primary' : 'nav-tab'} onClick={() => setActiveTab(key)}>{label}</button>
-          ))}
-        </nav>
-        <div className="surface-card flex flex-wrap items-center gap-2 p-2">
-          <button className="btn-danger" type="button" onClick={resetCurrentSession} disabled={resettingDay || !store.day}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando...' : 'Reiniciar sesion'}</button>
-          <button className="btn-tertiary" type="button" onClick={() => setActiveTab('dashboard')}>Ver tablero</button>
-        </div>
+          <nav className="surface-card grid grid-cols-2 gap-2 p-2 md:grid-cols-4">
+            {([
+              ['flow', 'Entreno'],
+              ['dashboard', 'Tablero'],
+              ['analytics', 'Analítica'],
+              ['plan', 'Plan']
+            ] as Array<[TabKey, string]>).map(([key, label]) => (
+              <button key={key} className={activeTab === key ? 'btn-primary' : 'nav-tab'} onClick={() => setActiveTab(key)}>{label}</button>
+            ))}
+          </nav>
+          <div className="surface-card flex flex-wrap items-center gap-2 p-2">
+            <button className="btn-danger" type="button" onClick={resetCurrentSession} disabled={resettingDay || !store.day}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando…' : 'Reiniciar sesión'}</button>
+            {!isViewingToday && <button className="btn-tertiary" type="button" onClick={() => void handleDaySelection(currentCycleDay)}>Volver a hoy</button>}
+          </div>
         </div>
 
-        {error && <p className="mb-4 border border-red-500/40 bg-red-950/40 p-3 text-red-200 rounded">{error}</p>}
+        {error && <p className="notice notice-error mb-4"><AlertTriangle size={16} /> {error}</p>}
+        {statusNotice && <p className="notice notice-success mb-4"><CheckCircle2 size={16} /> {statusNotice}</p>}
 
         {activeTab === 'dashboard' && (
           <section className="grid gap-4 md:grid-cols-3">
             <div className="metric"><span>Peso hacia 83 kg</span><strong>{latestMetric?.bodyWeightKg ?? 77.78} kg</strong><div className="h-2 bg-obsidian rounded mt-3 overflow-hidden"><div className="h-full bg-volt" style={{ width: `${bodyProgress}%` }} /></div><p className="mt-2 text-xs text-steel">{bodyProgress.toFixed(0)}% del camino hacia 83 kg.</p></div>
-            <div className="metric"><span>Proteina hoy</span><strong>{proteinToday}g / 160-175g</strong><p className="mt-2 text-xs text-steel">{proteinTopGap > 0 ? `Te faltan ${proteinTopGap}g para tocar el techo del rango.` : 'Ya estas dentro del rango alto.'}</p></div>
-            <div className="metric"><span>Volumen semanal</span><strong>{(volume?.total ?? 0).toFixed(0)} kg</strong></div>
+            <div className="metric"><span>Proteína hoy</span><strong>{proteinToday} g / 160-175 g</strong><p className="mt-2 text-xs text-steel">{proteinTopGap > 0 ? `Te faltan ${proteinTopGap} g para tocar el techo del rango.` : 'Ya estás dentro del rango alto.'}</p></div>
+            <div className="metric"><span>Volumen semanal</span><strong>{(volume?.total ?? 0).toFixed(0)} kg</strong><p className="mt-2 text-xs text-steel">Volumen local del día: {todayVolume.toFixed(0)} kg.</p></div>
+
+            <div className="surface-card p-4 md:col-span-2">
+              <p className="section-label mb-3">Listo para entrenar</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="metric"><span>Sets pendientes</span><strong>{remainingSets}</strong><p className="mt-2 text-xs text-steel">{store.completed ? 'La sesión ya quedó cerrada.' : `Te espera ${exercise?.name ?? 'el próximo ejercicio'}.`}</p></div>
+                <div className="metric"><span>Foco técnico inicial</span><strong className="text-base">{firstExerciseFocus}</strong><p className="mt-2 text-xs text-steel">Si no cargaste métricas hoy, hacelo antes de arrancar.</p></div>
+                <div className="metric"><span>Modo actual</span><strong>{isViewingToday ? 'Entrenando en vivo' : `Historial día ${viewedCycleDay}`}</strong></div>
+                <div className="metric"><span>Próxima prioridad</span><strong>{exercise?.name ?? nextExerciseName}</strong><p className="mt-2 text-xs text-steel">{nextCoachCue}</p></div>
+              </div>
+            </div>
 
             <form onSubmit={saveMetric} className="surface-card md:col-span-3 grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]">
               <label className="field">Peso<input value={metricWeight} onChange={(e) => setMetricWeight(e.target.value)} type="number" step="0.01" /></label>
-              <label className="field">Proteina<input value={metricProtein} onChange={(e) => setMetricProtein(e.target.value)} type="number" /></label>
-              <button className="btn-primary"><Save size={16} /> Guardar</button>
+              <label className="field">Proteína<input value={metricProtein} onChange={(e) => setMetricProtein(e.target.value)} type="number" /></label>
+              <button className="btn-primary"><Save size={16} /> Guardar hoy</button>
             </form>
 
             <div className="surface-card p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Musculos mas cargados</p>
-              {strongestMuscles.length ? strongestMuscles.map(([muscle, value]) => <p key={muscle} className="flex justify-between py-2 border-b border-charcoal text-sm"><span>{muscleName(muscle)}</span><strong>{value.toFixed(0)} kg</strong></p>) : <p className="text-steel">Todavia sin volumen suficiente.</p>}
+              <p className="section-label mb-3">Músculos más cargados</p>
+              {strongestMuscles.length ? strongestMuscles.map(([muscle, value]) => <p key={muscle} className="flex justify-between py-2 border-b border-charcoal text-sm"><span>{muscleName(muscle)}</span><strong>{value.toFixed(0)} kg</strong></p>) : <p className="text-steel">Todavía sin volumen suficiente.</p>}
             </div>
 
             <div className="surface-card p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Musculos menos trabajados</p>
-              {weakestMuscles.length ? weakestMuscles.map(([muscle, value]) => <p key={muscle} className="flex justify-between py-2 border-b border-charcoal text-sm"><span>{muscleName(muscle)}</span><strong>{value.toFixed(0)} kg</strong></p>) : <p className="text-steel">Aun no hay distribucion suficiente para comparar.</p>}
+              <p className="section-label mb-3">Músculos menos trabajados</p>
+              {weakestMuscles.length ? weakestMuscles.map(([muscle, value]) => <p key={muscle} className="flex justify-between py-2 border-b border-charcoal text-sm"><span>{muscleName(muscle)}</span><strong>{value.toFixed(0)} kg</strong></p>) : <p className="text-steel">Aún no hay distribución suficiente para comparar.</p>}
             </div>
 
             <div className="surface-card p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Meta diaria</p>
-              <p className="text-sm text-steel">Hoy la app tiene que empujarte a 83 kg con consistencia, proteina y progresion real.</p>
-              <p className="mt-3 text-white font-medium">Volumen del dia: {todayVolume.toFixed(0)} kg</p>
-              <p className="mt-2 text-sm text-steel">Sets pendientes: {remainingSets}. Proteina minima restante: {proteinFloorGap}g.</p>
-            </div>
-
-            <div className="surface-card md:col-span-3 p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Alertas de progresion</p>
-              {suggestions.length ? suggestions.map((item) => (
-                <div key={item.id} className="border border-volt/30 bg-volt/10 p-3 rounded mb-2">
-                  <strong>{item.exercise?.name}</strong>
-                  <p className="text-steel text-sm mt-1">{item.reason} {item.action}</p>
-                  <div className="flex gap-2 mt-3">
-                    <button className="btn-tertiary" onClick={() => resolveSuggestion(item.id, true)}>Aceptar</button>
-                    <button className="btn-tertiary" onClick={() => resolveSuggestion(item.id, false)}>Rechazar</button>
-                  </div>
-                </div>
-              )) : <p className="text-steel">Todavia no hay alertas. Segui registrando sets con RIR/RPE para que el sistema piense mejor.</p>}
+              <p className="section-label mb-3">Última progresión aplicada</p>
+              {latestApplied[0] ? (
+                <>
+                  <p className="font-medium text-white">{latestApplied[0].exercise?.name}</p>
+                  <p className="mt-2 text-sm text-steel">{latestApplied[0].reason}</p>
+                  <p className="mt-2 text-sm text-volt">{latestApplied[0].action}</p>
+                </>
+              ) : <p className="text-steel">Todavía no hay progresiones aplicadas. Seguí registrando sets con calidad.</p>}
             </div>
           </section>
         )}
@@ -574,7 +666,7 @@ export function App() {
         {activeTab === 'analytics' && (
           <section className="grid gap-4 md:grid-cols-2">
             <div className="surface-card p-4">
-              <h2 className="font-mono text-volt mb-3 flex gap-2"><BarChart3 /> Volumen por musculo</h2>
+              <h2 className="font-mono text-volt mb-3 flex gap-2"><BarChart3 /> Volumen por músculo</h2>
               {topEntries(volume?.byMuscle ?? {}).map(([muscle, value]) => (
                 <div key={muscle} className="mb-3">
                   <div className="flex justify-between text-sm"><span>{muscleName(muscle)}</span><span>{value.toFixed(0)} kg</span></div>
@@ -599,6 +691,21 @@ export function App() {
                 ))}
               </div>
             </div>
+
+            <div className="surface-card md:col-span-2 p-4">
+              <h2 className="font-mono text-volt mb-3 flex gap-2"><Target /> Progresiones recientes</h2>
+              {latestApplied.length ? latestApplied.map((item) => (
+                <div key={item.id} className="rounded-2xl border border-volt/20 bg-volt/5 p-4 mb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <strong className="text-white">{item.exercise?.name}</strong>
+                    <span className="text-xs uppercase tracking-[0.2em] text-steel">{item.evaluatedCycleDate}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-steel">{item.reason}</p>
+                  <p className="mt-2 text-sm text-volt">{item.action}</p>
+                  <p className="mt-2 text-xs text-steel">Objetivo generado: {item.targetWeightKg ? `${item.targetWeightKg} kg` : 'sin cambio de carga'}{item.targetRepGoal ? ` x ${item.targetRepGoal}+ reps` : ''}</p>
+                </div>
+              )) : <p className="text-steel">Todavía no hay progresiones suficientes para analizar.</p>}
+            </div>
           </section>
         )}
 
@@ -612,18 +719,19 @@ export function App() {
             {planDays.map((day, dayIndex) => (
               <section key={day.id} className="surface-card p-4">
                 <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-                  <h2 className="font-mono text-volt">Dia {day.cycleDay}: {day.name}</h2>
+                  <h2 className="font-mono text-volt">Día {day.cycleDay}: {day.name}</h2>
                   <button className="btn-tertiary" onClick={() => addCustomExercise(dayIndex)}><Plus size={14} /> Agregar ejercicio</button>
                 </div>
 
                 <div className="grid gap-3">
                   {day.exercises.map((item, exerciseIndex) => (
-                    <div key={`${item.id || 'new'}-${exerciseIndex}`} className="grid gap-2 md:grid-cols-[2fr_80px_100px_100px_90px] items-end">
+                    <div key={`${item.id || 'new'}-${exerciseIndex}`} className="grid gap-2 md:grid-cols-[2fr_72px_96px_76px_86px_110px] items-end">
                       <label className="field">Ejercicio<input value={item.name} onChange={(e) => updatePlanExercise(dayIndex, exerciseIndex, { name: e.target.value })} /></label>
                       <label className="field">Sets<input type="number" value={item.sets} onChange={(e) => updatePlanExercise(dayIndex, exerciseIndex, { sets: Number(e.target.value) })} /></label>
                       <label className="field">Reps<input value={item.targetReps} onChange={(e) => updatePlanExercise(dayIndex, exerciseIndex, { targetReps: e.target.value })} /></label>
+                      <label className="field">RPE<input value={item.rpe} onChange={(e) => updatePlanExercise(dayIndex, exerciseIndex, { rpe: e.target.value })} /></label>
                       <label className="field">Rest<input type="number" value={item.restSeconds} onChange={(e) => updatePlanExercise(dayIndex, exerciseIndex, { restSeconds: Number(e.target.value) })} /></label>
-                      <button className="btn-secondary" onClick={() => updatePlanExercise(dayIndex, exerciseIndex, { active: !item.active })}>{item.active === false ? 'Off' : 'On'}</button>
+                      <button className="btn-secondary" onClick={() => updatePlanExercise(dayIndex, exerciseIndex, { active: !item.active })}>{item.active === false ? 'Apagado' : 'Activo'}</button>
                     </div>
                   ))}
                 </div>
@@ -635,39 +743,53 @@ export function App() {
         {activeTab === 'flow' && (store.day?.exercises.length === 0 || store.completed ? (
           <section className="hero-panel p-6 text-center">
             <Activity className="mx-auto text-volt mb-4" size={42} />
-            <h2 className="text-2xl font-bold">Dia completo</h2>
-            <p className="text-steel mt-3">Consumí <strong className="text-volt">160g-175g de proteina</strong> para crecer de 77.78 kg a 83.0 kg.</p>
+            <h2 className="text-2xl font-bold">Día completo</h2>
+            <p className="text-steel mt-3">Consumí <strong className="text-volt">160g-175g de proteína</strong> para seguir subiendo de 77.78 kg hacia 83.0 kg.</p>
+            <p className="text-steel mt-2">Volumen registrado hoy: {todayVolume.toFixed(0)} kg.</p>
             <div className="mt-6 flex justify-center">
-              <button className="btn-secondary" onClick={resetCurrentSession} disabled={resettingDay}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando...' : 'Reiniciar dia'}</button>
+              <button className="btn-secondary" onClick={resetCurrentSession} disabled={resettingDay}><RotateCcw size={16} /> {resettingDay ? 'Reiniciando…' : 'Reiniciar día'}</button>
             </div>
           </section>
         ) : exercise && (
-          <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+          <section className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
             <section className="surface-card p-5">
-              <p className="text-steel uppercase tracking-[0.25em] text-xs">Ejercicio actual - Set {store.setNumber}/{exercise.sets}</p>
+              {!isViewingToday && <div className="notice notice-warning mb-4"><AlertTriangle size={16} /> Estás mirando historial. No es el flujo vivo del día actual.</div>}
+              <p className="section-label">Ejercicio actual · Set {store.setNumber}/{exercise.sets}</p>
               <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
                 <h2 className="font-mono text-3xl text-volt">{exercise.name}</h2>
                 <div className="flex items-center gap-2 text-sm text-steel"><Clock3 size={16} /> Descanso {exercise.restSeconds}s</div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                {exercise.warmup && <span className="status-pill">Activacion incluida</span>}
+                {exercise.warmup && <span className="status-pill">Activación incluida</span>}
                 <span className="status-pill">{exercise.metadata?.kind === 'isolation' ? 'Aislado' : 'Compuesto'}</span>
-                <span className="status-pill">Volumen del dia {todayVolume.toFixed(0)} kg</span>
+                <span className="status-pill">Volumen del día {todayVolume.toFixed(0)} kg</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mt-5 text-sm">
+              <div className="grid grid-cols-2 gap-3 mt-5 text-sm lg:grid-cols-3">
                 <div className="metric"><span>Objetivo</span><strong>{exercise.targetReps}</strong></div>
-                <div className="metric"><span>RPE</span><strong>{exercise.rpe}</strong></div>
-                <div className="metric"><span>Tipo</span><strong>{exercise.metadata?.kind === 'isolation' ? 'Aislado' : 'Compuesto'}</strong></div>
+                <div className="metric"><span>RPE plan</span><strong>{exercise.rpe}</strong></div>
+                <div className="metric"><span>Respiración</span><strong>{exercise.breath}</strong></div>
                 <div className="metric"><span>Mejor set</span><strong>{formatBestSet(history)}</strong></div>
-                <div className="metric"><span>Ultimo set equivalente</span><strong>{formatEquivalentSet(lastEquivalentSet)}</strong></div>
-                <div className="metric"><span>Respiracion</span><strong>{exercise.breath}</strong></div>
+                <div className="metric"><span>Último set equivalente</span><strong>{formatEquivalentSet(lastEquivalentSet)}</strong></div>
+                <div className="metric"><span>Técnica previa</span><strong>{formatTechnique(lastEquivalentSet?.techniqueStatus as TechniqueStatus | undefined)}</strong></div>
               </div>
 
               <div className="coach-banner mt-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mb-2 flex gap-2"><Target size={14} /> Objetivo recomendado hoy</p>
+                <p className="section-label mb-2 flex gap-2"><Target size={14} /> Objetivo recomendado hoy</p>
                 <p className="font-mono text-xl text-volt">{recommendedWeight ? `${recommendedWeight} kg` : 'Sin cambio de carga'} {recommendedReps ? `x ${recommendedReps}+ reps` : ''}</p>
-                <p className="text-sm text-steel mt-2">{currentSuggestion ? `${currentSuggestion.reason} ${currentSuggestion.action}` : exercise.metadata?.overloadRecommendation}</p>
+                <p className="text-sm text-steel mt-2">{currentSuggestion ? `${currentSuggestion.reason} ${currentSuggestion.action}` : exercise.lastProgressionAction ?? exercise.metadata?.overloadRecommendation}</p>
+                {exercise.lastProgressionReason && <p className="mt-2 text-xs text-steel">Última progresión: {exercise.lastProgressionReason}</p>}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 mt-5">
+                <div className="coach-banner text-sm">
+                  <p className="section-label mb-2">Cue principal</p>
+                  <p className="text-white">{nextCoachCue}</p>
+                </div>
+                <div className="coach-banner text-sm">
+                  <p className="section-label mb-2">Error a evitar</p>
+                  <p className="text-white">{nextCoachMistake}</p>
+                </div>
               </div>
 
               {previousSet && (
@@ -684,59 +806,81 @@ export function App() {
                   <label className="field">RIR<input value={rir} onChange={(e) => setRir(e.target.value)} type="number" min="0" max="10" /></label>
                   <label className="field">RPE real<input value={actualRpe} onChange={(e) => setActualRpe(e.target.value)} type="number" min="1" max="10" /></label>
                   <label className="field">Dolor 0-10<input value={painLevel} onChange={(e) => setPainLevel(e.target.value)} type="number" min="0" max="10" /></label>
-                  <label className="field">Notas<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Molestias, tecnica, sensaciones" /></label>
+                  <label className="field">Notas<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Molestias, técnica, sensaciones" /></label>
                 </div>
+
+                <div>
+                  <p className="section-label mb-2">Estado técnico del set</p>
+                  <div className="segmented-grid">
+                    {([
+                      ['clean', 'Limpia'],
+                      ['grindy', 'Muy exigida'],
+                      ['compensated', 'Compensada']
+                    ] as Array<[TechniqueStatus, string]>).map(([value, label]) => (
+                      <button key={value} type="button" className={techniqueStatus === value ? 'segment-active' : 'segment'} onClick={() => setTechniqueStatus(value)}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
-                  <button className="btn-primary disabled:opacity-40" disabled={!weightKg || !reps || saving}>{saving ? 'Guardando...' : 'Guardar set'}</button>
-                  <button className="btn-danger" type="button" onClick={resetCurrentSession} disabled={resettingDay}>{resettingDay ? 'Reiniciando...' : 'Reiniciar sesion del dia'}</button>
+                  <button className="btn-primary disabled:opacity-40" disabled={!weightKg || !reps || saving}>{saving ? 'Guardando…' : 'Guardar set'}</button>
+                  <button className="btn-danger" type="button" onClick={resetCurrentSession} disabled={resettingDay}>{resettingDay ? 'Reiniciando…' : 'Reiniciar sesión del día'}</button>
                 </div>
               </form>
             </section>
 
             <aside className="grid gap-4">
+              <div className="surface-card p-4">
+                <p className="section-label mb-3">Readiness</p>
+                <div className="grid gap-3">
+                  <div className="metric"><span>Sets pendientes</span><strong>{remainingSets}</strong></div>
+                  <div className="metric"><span>Proteína faltante</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap} g` : '0 g'}</strong></div>
+                  <div className="metric"><span>Volumen acumulado</span><strong>{estimatedVolume.toFixed(0)} kg</strong></div>
+                  <div className="metric"><span>Próximo paso</span><strong>{store.setNumber < exercise.sets ? `Repetí ${exercise.name}` : nextExerciseName}</strong></div>
+                </div>
+              </div>
               <AnatomyMap exercise={exercise} />
               <section className="surface-card p-4">
-                <h3 className="font-mono text-volt flex gap-2"><BookOpen /> Guia tecnica</h3>
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mt-3">Video</p>
+                <h3 className="font-mono text-volt flex gap-2"><BookOpen /> Guía técnica</h3>
+                <p className="section-label mt-3">Video</p>
                 {videoResource.embedUrl ? (
                   <iframe title={`${exercise.name} video`} src={videoResource.embedUrl} className="mt-2 aspect-video w-full rounded border border-charcoal" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
                 ) : (
                   <div className="mt-2 rounded border border-charcoal bg-obsidian p-4">
-                    <p className="text-sm text-steel">Todavia no hay un embed confiable para este ejercicio. En vez de mostrar un video roto, te dejo accesos tecnicos utiles.</p>
+                    <p className="text-sm text-steel">Todavía no hay un embed confiable para este ejercicio. En vez de mostrar un video roto, te dejo accesos técnicos útiles.</p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <a className="btn-tertiary" href={videoResource.watchUrl} target="_blank" rel="noreferrer">Buscar video</a>
-                      <a className="btn-tertiary" href={buildExrxSearchUrl(exercise.name)} target="_blank" rel="noreferrer">Ver ExRx</a>
+                      <a className="btn-tertiary" href={exercise.metadata?.referenceUrl ?? buildExrxSearchUrl(exercise.name)} target="_blank" rel="noreferrer">{exercise.metadata?.referenceLabel ?? 'Ver ExRx'}</a>
                       <a className="btn-tertiary" href={buildAceSearchUrl(exercise.name)} target="_blank" rel="noreferrer">Ver ACE</a>
                     </div>
                   </div>
                 )}
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Instrucciones</p>
+                <p className="section-label mt-4">Instrucciones</p>
                 <ul className="list-disc pl-5 text-sm text-steel">{exercise.metadata?.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}</ul>
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Cues</p>
+                <p className="section-label mt-4">Cues</p>
                 <ul className="list-disc pl-5 text-sm text-steel">{exercise.metadata?.technicalCues.map((cue) => <li key={cue}>{cue}</li>)}</ul>
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mt-4">Errores comunes</p>
+                <p className="section-label mt-4">Errores comunes</p>
                 <ul className="list-disc pl-5 text-sm text-steel">{exercise.metadata?.commonMistakes.map((mistake) => <li key={mistake}>{mistake}</li>)}</ul>
               </section>
               <section className="surface-card p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Sigue despues</p>
-                <p className="text-white font-medium">{store.setNumber < exercise.sets ? `Repeti ${exercise.name}` : nextExerciseName}</p>
-                <p className="text-steel text-sm mt-2">{isViewingToday ? 'Sesion actual' : `Mirando historial del dia ${viewedCycleDay}`}</p>
-                <p className="text-steel text-sm mt-1">Ultima sesion: {history?.latestDate ?? 'sin datos previos'}</p>
+                <p className="section-label mb-3">Sigue después</p>
+                <p className="text-white font-medium">{store.setNumber < exercise.sets ? `Repetí ${exercise.name}` : nextExerciseName}</p>
+                <p className="text-steel text-sm mt-2">{isViewingToday ? 'Sesión actual' : `Mirando historial del día ${viewedCycleDay}`}</p>
+                <p className="text-steel text-sm mt-1">Última sesión registrada: {history?.latestDate ?? 'sin datos previos'}</p>
                 {currentSuggestion && <div className="mt-3 flex gap-2"><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, true)}>Aceptar progreso</button><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, false)}>Posponer</button></div>}
+                {lastAppliedForCurrentExercise && (
+                  <div className="mt-4 rounded-2xl border border-volt/20 bg-volt/5 p-3">
+                    <p className="section-label mb-2">Última progresión aplicada</p>
+                    <p className="text-sm text-steel">{lastAppliedForCurrentExercise.reason}</p>
+                    <p className="text-sm text-volt mt-2">{lastAppliedForCurrentExercise.action}</p>
+                  </div>
+                )}
               </section>
               <section className="surface-card p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Coach de sesion</p>
+                <p className="section-label mb-3">Navegación</p>
                 <div className="grid gap-3">
-                  <div className="metric"><span>Sets completados</span><strong>{progress.completedSets}</strong></div>
-                  <div className="metric"><span>Sets restantes</span><strong>{remainingSets}</strong></div>
-                  <div className="metric"><span>Proteina faltante</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap}g` : '0g'}</strong></div>
-                </div>
-              </section>
-              <section className="surface-card p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-steel mb-3">Navegacion</p>
-                <div className="grid gap-3">
-                  <button className="btn-secondary" type="button" disabled={viewedCycleDay <= 1 || switchingDay} onClick={() => handleDaySelection(viewedCycleDay - 1)}><ChevronLeft size={16} /> Dia anterior</button>
-                  <button className="btn-secondary" type="button" disabled={viewedCycleDay >= currentCycleDay || switchingDay} onClick={() => handleDaySelection(viewedCycleDay + 1)}><ChevronRight size={16} /> Dia siguiente</button>
+                  <button className="btn-secondary" type="button" disabled={viewedCycleDay <= 1 || switchingDay} onClick={() => handleDaySelection(viewedCycleDay - 1)}><ChevronLeft size={16} /> Día anterior</button>
+                  <button className="btn-secondary" type="button" disabled={viewedCycleDay >= currentCycleDay || switchingDay} onClick={() => handleDaySelection(viewedCycleDay + 1)}><ChevronRight size={16} /> Día siguiente</button>
                 </div>
               </section>
             </aside>

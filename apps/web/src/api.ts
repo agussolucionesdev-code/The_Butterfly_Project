@@ -1,4 +1,4 @@
-import type { BodyMetric, ExerciseHistory, ExerciseMetadata, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics } from './types';
+﻿import type { BodyMetric, ExerciseHistory, ExerciseMetadata, ProgressionAnalytics, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
@@ -29,6 +29,7 @@ export async function saveSet(input: {
   reps: number;
   rir?: number;
   actualRpe?: number;
+  techniqueStatus?: 'clean' | 'grindy' | 'compensated';
   tempo?: string;
   painLevel?: number;
   notes?: string;
@@ -56,7 +57,7 @@ export async function getVolumeAnalytics(from?: string, to?: string): Promise<{ 
   return api(`/api/analytics/volume${params.size ? `?${params}` : ''}`);
 }
 
-export async function getProgressionSuggestions(): Promise<{ suggestions: ProgressionSuggestion[] }> {
+export async function getProgressionSuggestions(): Promise<ProgressionAnalytics> {
   return api('/api/analytics/progression');
 }
 
