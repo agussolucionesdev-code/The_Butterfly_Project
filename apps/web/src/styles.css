@@ -23,6 +23,8 @@ body {
   .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-md border border-red-500/40 bg-red-950/50 px-4 py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-red-200 transition hover:border-red-400 hover:text-white; }
   .btn-tertiary { @apply inline-flex items-center justify-center rounded-md border border-volt/40 bg-transparent px-3 py-2 font-mono text-xs font-bold uppercase tracking-[0.18em] text-volt transition hover:border-volt hover:bg-volt/10; }
   .nav-tab { @apply inline-flex min-h-12 items-center justify-center rounded-md border border-transparent bg-transparent px-3 py-3 font-mono text-xs font-bold uppercase tracking-[0.14em] text-steel transition hover:border-charcoal hover:text-white; }
+  .bottom-tab { @apply inline-flex flex-1 min-h-14 items-center justify-center rounded-md border border-transparent bg-transparent px-2 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-steel transition hover:text-white; }
+  .bottom-tab-active { @apply inline-flex flex-1 min-h-14 items-center justify-center rounded-md border border-volt/30 bg-volt/10 px-2 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-volt; }
   .metric { @apply rounded-lg border border-charcoal/80 bg-[linear-gradient(180deg,rgba(26,26,26,0.94),rgba(10,10,10,0.92))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]; }
   .metric-highlight { @apply border-volt/30 bg-volt/10; }
   .metric span { @apply block text-steel uppercase tracking-[0.22em] text-[11px]; }

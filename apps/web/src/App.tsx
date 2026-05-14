@@ -30,11 +30,13 @@ import {
   checkHabit,
   completeChallenge,
   getActivePlan,
+  getAdherenceAnalytics,
   getBodyMetrics,
   getChallengeToday,
   getCoachToday,
   getDay,
   getExerciseHistory,
+  getExerciseTrends,
   getHabitsToday,
   getLogs,
   getNutritionToday,
@@ -57,7 +59,7 @@ import {
   startSession
 } from './api';
 import { useWorkoutStore } from './store/workoutStore';
-import type { BodyMetric, CoachRecommendation, DailyChallenge, Exercise, ExerciseHistory, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionSuggestion, TrainingDay, VolumeAnalytics, WorkoutSessionSummary } from './types';
+import type { AdherenceAnalytics, BodyMetric, CoachRecommendation, DailyChallenge, Exercise, ExerciseHistory, ExerciseTrend, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionSuggestion, TrainingDay, VolumeAnalytics, WorkoutSessionSummary } from './types';
 import { getEstimatedVolume, getWorkoutProgress, resolveCycleDate } from './utils/workout';
 
 const MUSCLE_LABELS: Record<string, string> = {
@@ -85,6 +87,16 @@ const MUSCLE_LABELS: Record<string, string> = {
 
 type TabKey = 'flow' | 'dashboard' | 'analytics' | 'nutrition' | 'habits' | 'photos' | 'plan' | 'settings';
 type TechniqueStatus = 'clean' | 'grindy' | 'compensated';
+const APP_TABS: Array<[TabKey, string]> = [
+  ['flow', 'Entreno'],
+  ['dashboard', 'Tablero'],
+  ['analytics', 'Analitica'],
+  ['nutrition', 'Nutricion'],
+  ['habits', 'Objetivos'],
+  ['photos', 'Fotos'],
+  ['plan', 'Plan'],
+  ['settings', 'Ajustes']
+];
 
 function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
@@ -243,6 +255,8 @@ export function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('flow');
   const [history, setHistory] = useState<ExerciseHistory | null>(null);
   const [volume, setVolume] = useState<VolumeAnalytics | null>(null);
+  const [adherence, setAdherence] = useState<AdherenceAnalytics | null>(null);
+  const [exerciseTrends, setExerciseTrends] = useState<ExerciseTrend[]>([]);
   const [suggestions, setSuggestions] = useState<ProgressionSuggestion[]>([]);
   const [latestApplied, setLatestApplied] = useState<ProgressionSuggestion[]>([]);
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
@@ -299,6 +313,9 @@ export function App() {
   const sessionCompleted = session?.status === 'completed';
   const sessionStarted = Boolean(session);
   const sessionProgressLabel = session ? `${session.completedWorkingSets}/${session.totalWorkingSets}` : 'Sin iniciar';
+  const trainingStreak = adherence?.currentTrainingStreak ?? 0;
+  const proteinConsistency = adherence ? `${adherence.proteinDays}/${adherence.days.length}` : '0/0';
+  const trainingConsistency = adherence ? `${adherence.trainingDays}/${adherence.days.length}` : '0/0';
   const nextCoachCue = exercise?.metadata?.technicalCues?.[0] ?? 'Mantene la tecnica estable.';
   const nextCoachMistake = exercise?.metadata?.commonMistakes?.[0] ?? 'No compenses el patron por cargar de mas.';
   const firstExerciseFocus = store.day?.exercises[0]?.metadata?.technicalCues?.[0] ?? 'Cargue peso y proteina antes de arrancar.';
@@ -315,14 +332,18 @@ export function App() {
     : [];
 
   async function refreshCoachData(currentExercise = exercise) {
-    const [volumeResponse, progressionResponse] = await Promise.all([
+    const [volumeResponse, progressionResponse, adherenceResponse, trendsResponse] = await Promise.all([
       getVolumeAnalytics(),
-      getProgressionSuggestions()
+      getProgressionSuggestions(),
+      getAdherenceAnalytics(),
+      getExerciseTrends()
     ]);
 
     setVolume(volumeResponse.volume);
     setSuggestions(progressionResponse.suggestions);
     setLatestApplied(progressionResponse.latestApplied);
+    setAdherence(adherenceResponse);
+    setExerciseTrends(trendsResponse.trends);
 
     if (currentExercise) {
       setHistory((await getExerciseHistory(currentExercise.id)).history);
@@ -774,7 +795,7 @@ export function App() {
   }
 
   return (
-    <main className="app-shell min-h-screen p-4 text-white sm:p-8">
+    <main className="app-shell min-h-screen p-4 pb-24 text-white sm:p-8 sm:pb-8">
       <section className="mx-auto max-w-7xl">
         <header className="hero-panel mb-6 p-5 sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -830,17 +851,8 @@ export function App() {
         </header>
 
         <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_auto]">
-          <nav className="surface-card grid grid-cols-2 gap-2 p-2 md:grid-cols-4 xl:grid-cols-8">
-            {([
-              ['flow', 'Entreno'],
-              ['dashboard', 'Tablero'],
-              ['analytics', 'Analitica'],
-              ['nutrition', 'Nutricion'],
-              ['habits', 'Objetivos'],
-              ['photos', 'Fotos'],
-              ['plan', 'Plan'],
-              ['settings', 'Ajustes']
-            ] as Array<[TabKey, string]>).map(([key, label]) => (
+          <nav className="surface-card hidden grid-cols-2 gap-2 p-2 md:grid md:grid-cols-4 xl:grid-cols-8">
+            {APP_TABS.map(([key, label]) => (
               <button key={key} className={activeTab === key ? 'btn-primary' : 'nav-tab'} onClick={() => setActiveTab(key)}>{label}</button>
             ))}
           </nav>
@@ -858,6 +870,9 @@ export function App() {
             <div className="metric"><span>Peso hacia 83 kg</span><strong>{latestMetric?.bodyWeightKg ?? 77.78} kg</strong><div className="h-2 bg-obsidian rounded mt-3 overflow-hidden"><div className="h-full bg-volt" style={{ width: `${bodyProgress}%` }} /></div><p className="mt-2 text-xs text-steel">{bodyProgress.toFixed(0)}% del camino hacia 83 kg.</p></div>
             <div className="metric"><span>Proteina hoy</span><strong>{proteinToday} g / 160-175 g</strong><p className="mt-2 text-xs text-steel">{proteinTopGap > 0 ? `Te faltan ${proteinTopGap} g para tocar el techo del rango.` : 'Ya estas dentro del rango alto.'}</p></div>
             <div className="metric"><span>Volumen semanal</span><strong>{(volume?.total ?? 0).toFixed(0)} kg</strong><p className="mt-2 text-xs text-steel">Volumen local del dia: {todayVolume.toFixed(0)} kg.</p></div>
+            <div className="metric"><span>Racha de entreno</span><strong>{trainingStreak} dias</strong><p className="mt-2 text-xs text-steel">Cumplimiento entrenamiento: {trainingConsistency}.</p></div>
+            <div className="metric"><span>Consistencia proteica</span><strong>{proteinConsistency}</strong><p className="mt-2 text-xs text-steel">Dias dentro del piso semanal reciente.</p></div>
+            <div className="metric"><span>Adherencia habitos</span><strong>{adherence ? `${Math.round(adherence.habitCompletionRate * 100)}%` : '0%'}</strong><p className="mt-2 text-xs text-steel">Promedio de cumplimiento en la ventana reciente.</p></div>
 
             <div className="surface-card p-4 md:col-span-2">
               <p className="section-label mb-3">Listo para entrenar</p>
@@ -927,11 +942,54 @@ export function App() {
                 <button type="button" className="btn-tertiary" onClick={() => void refreshCoachNow()}>Recalcular coach</button>
               </div>
             </div>
+
+            <div className="surface-card p-4 md:col-span-3">
+              <p className="section-label mb-3">Tendencia reciente por ejercicio</p>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {exerciseTrends.slice(0, 6).map((trend) => (
+                  <div key={trend.exerciseId} className="metric">
+                    <span>{trend.latestDate}</span>
+                    <strong>{trend.exerciseName}</strong>
+                    <p className="mt-2 text-sm text-white">{trend.latestWeightKg} kg x {trend.latestReps}</p>
+                    <p className={`mt-2 text-xs ${trend.status === 'up' ? 'text-volt' : trend.status === 'down' ? 'text-red-300' : 'text-steel'}`}>
+                      {trend.status === 'new'
+                        ? 'Primer registro util.'
+                        : trend.status === 'up'
+                          ? `Mejorando vs anterior (${trend.deltaWeightKg ?? 0} kg / ${trend.deltaReps ?? 0} reps).`
+                          : trend.status === 'down'
+                            ? `Cayo vs anterior (${trend.deltaWeightKg ?? 0} kg / ${trend.deltaReps ?? 0} reps).`
+                            : 'Sin cambio relevante vs anterior.'}
+                    </p>
+                  </div>
+                ))}
+                {!exerciseTrends.length && <p className="text-steel">Todavia no hay suficientes sesiones para mostrar tendencias.</p>}
+              </div>
+            </div>
           </section>
         )}
 
         {activeTab === 'analytics' && (
           <section className="grid gap-4 md:grid-cols-2">
+            <div className="surface-card p-4">
+              <h2 className="font-mono text-volt mb-3 flex gap-2"><CheckCircle2 /> Adherencia semanal</h2>
+              <div className="grid gap-3">
+                <div className="metric"><span>Proteina cumplida</span><strong>{proteinConsistency}</strong></div>
+                <div className="metric"><span>Entreno completado</span><strong>{trainingConsistency}</strong></div>
+                <div className="metric"><span>Racha actual</span><strong>{trainingStreak} dias</strong></div>
+              </div>
+              <div className="mt-4 grid gap-2">
+                {(adherence?.days ?? []).map((day) => (
+                  <div key={day.date} className="rounded-md border border-charcoal bg-obsidian/70 p-3 text-sm text-steel">
+                    <div className="flex items-center justify-between gap-2">
+                      <strong className="text-white">{day.date}</strong>
+                      <span>{day.completedHabits}/{day.totalHabits} habitos</span>
+                    </div>
+                    <p className="mt-2">{day.trainingCompleted ? 'Entreno completo' : 'Entreno no completo'} · {day.proteinTargetMet ? 'Proteina OK' : 'Proteina pendiente'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="surface-card p-4">
               <h2 className="font-mono text-volt mb-3 flex gap-2"><BarChart3 /> Volumen por masculo</h2>
               {topEntries(volume?.byMuscle ?? {}).map(([muscle, value]) => (
@@ -945,6 +1003,24 @@ export function App() {
             <div className="surface-card p-4">
               <h2 className="font-mono text-volt mb-3 flex gap-2"><TrendingUp /> Volumen por ejercicio</h2>
               {topEntries(volume?.byExercise ?? {}).map(([name, value]) => <p key={name} className="flex justify-between border-b border-charcoal py-2 text-sm"><span>{name}</span><strong>{value.toFixed(0)} kg</strong></p>)}
+            </div>
+
+            <div className="surface-card p-4">
+              <h2 className="font-mono text-volt mb-3 flex gap-2"><TrendingUp /> Progreso por ejercicio</h2>
+              <div className="grid gap-3">
+                {exerciseTrends.map((trend) => (
+                  <div key={trend.exerciseId} className="rounded-md border border-charcoal bg-obsidian/70 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <strong className="text-white">{trend.exerciseName}</strong>
+                      <span className="text-xs uppercase tracking-[0.18em] text-steel">{trend.latestDate}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-steel">Último mejor set: <span className="text-white">{trend.latestWeightKg} kg x {trend.latestReps}</span></p>
+                    <p className={`mt-2 text-xs ${trend.status === 'up' ? 'text-volt' : trend.status === 'down' ? 'text-red-300' : 'text-steel'}`}>
+                      {trend.status === 'new' ? 'Todavia no hay referencia anterior.' : `Cambio vs sesión anterior: ${trend.deltaWeightKg ?? 0} kg / ${trend.deltaReps ?? 0} reps.`}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="surface-card md:col-span-2 p-4">
@@ -1342,6 +1418,15 @@ export function App() {
           </section>
         ))}
       </section>
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-charcoal bg-[#050505]/95 p-2 backdrop-blur md:hidden">
+        <nav className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto">
+          {APP_TABS.map(([key, label]) => (
+            <button key={key} className={activeTab === key ? 'bottom-tab-active' : 'bottom-tab'} onClick={() => setActiveTab(key)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
     </main>
   );
 }

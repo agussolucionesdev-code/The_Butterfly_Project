@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { formatDateOnly, getCycleDay, isFutureCycleDay, parseDateOnly } from '@butterfly/shared';
 import { prisma } from './db.js';
-import { parseLowRep, summarizeVolume } from './analytics.js';
+import { parseLowRep, summarizeAdherence, summarizeVolume } from './analytics.js';
 import { evaluateExerciseProgression } from './progression.js';
 
 const setLogSchema = z.object({
@@ -328,6 +328,37 @@ async function syncDerivedDayState(cycleDay: number, cycleDate: Date) {
 async function getSessionSummary(cycleDay: number, cycleDate: Date) {
   const summary = await syncDerivedDayState(cycleDay, cycleDate);
   return serializeSessionSummary(summary.session, summary.completedWorkingSets, summary.totalWorkingSets);
+}
+
+function sameDateKey(date: Date) {
+  return formatDateOnly(date);
+}
+
+function serializeTrendRecord(entry: {
+  exerciseId: string;
+  exerciseName: string;
+  latestDate: string;
+  latestWeightKg: number;
+  latestReps: number;
+  previousWeightKg: number | null;
+  previousReps: number | null;
+}) {
+  const deltaWeightKg = entry.previousWeightKg == null ? null : Math.round((entry.latestWeightKg - entry.previousWeightKg) * 100) / 100;
+  const deltaReps = entry.previousReps == null ? null : entry.latestReps - entry.previousReps;
+  const status = entry.previousWeightKg == null
+    ? 'new'
+    : deltaWeightKg! > 0 || (deltaWeightKg === 0 && (deltaReps ?? 0) > 0)
+      ? 'up'
+      : deltaWeightKg === 0 && (deltaReps ?? 0) === 0
+        ? 'flat'
+        : 'down';
+
+  return {
+    ...entry,
+    deltaWeightKg,
+    deltaReps,
+    status
+  };
 }
 
 async function syncExerciseProgression(exerciseId: string) {
@@ -920,6 +951,93 @@ export async function registerRoutes(app: FastifyInstance) {
     });
 
     return { from: formatDateOnly(from), to: formatDateOnly(to), volume: summarizeVolume(logs) };
+  });
+
+  app.get('/api/analytics/adherence', async (request, reply) => {
+    await ensureHabitGoals();
+    const query = z.object({
+      days: z.coerce.number().int().min(1).max(30).default(7)
+    }).safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ message: 'Ventana de adherencia inválida.' });
+
+    const today = parseDateOnly(formatDateOnly(new Date()));
+    const from = new Date(today.getTime() - (query.data.days - 1) * 86_400_000);
+    const [habitGoals, nutritionLogs, habitLogs, sessions] = await Promise.all([
+      prisma.habitGoal.findMany({ where: { active: true } }),
+      prisma.nutritionLog.findMany({ where: { date: { gte: from, lte: today } } }),
+      prisma.habitLog.findMany({ where: { date: { gte: from, lte: today } } }),
+      prisma.workoutSession.findMany({ where: { cycleDate: { gte: from, lte: today } } })
+    ]);
+
+    const days = Array.from({ length: query.data.days }, (_, index) => {
+      const date = new Date(from.getTime() + index * 86_400_000);
+      const dateKey = formatDateOnly(date);
+      const proteinTotal = nutritionLogs
+        .filter((log) => sameDateKey(log.date) === dateKey)
+        .reduce((total, log) => total + Number(log.proteinGrams), 0);
+      const dayHabitLogs = habitLogs.filter((log) => sameDateKey(log.date) === dateKey);
+      const session = sessions.find((item) => sameDateKey(item.cycleDate) === dateKey);
+
+      return {
+        date: dateKey,
+        proteinTargetMet: proteinTotal >= 160,
+        trainingCompleted: session?.status === 'completed',
+        completedHabits: dayHabitLogs.filter((log) => log.completed).length,
+        totalHabits: habitGoals.length
+      };
+    });
+
+    return summarizeAdherence(days);
+  });
+
+  app.get('/api/analytics/exercise-trends', async (request, reply) => {
+    const query = z.object({
+      limit: z.coerce.number().int().min(1).max(20).default(8)
+    }).safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ message: 'Límite inválido.' });
+
+    const exercises = await prisma.exercise.findMany({
+      where: { active: true },
+      include: {
+        logs: {
+          where: { setType: 'working' },
+          orderBy: [{ cycleDate: 'desc' }, { setNumber: 'asc' }]
+        }
+      }
+    });
+
+    const trends = exercises
+      .map((exercise) => {
+        const uniqueDates = [...new Set(exercise.logs.map((log) => sameDateKey(log.cycleDate)))];
+        const latestDate = uniqueDates[0];
+        if (!latestDate) return null;
+        const previousDate = uniqueDates[1] ?? null;
+        const latestLogs = exercise.logs.filter((log) => sameDateKey(log.cycleDate) === latestDate);
+        const previousLogs = previousDate ? exercise.logs.filter((log) => sameDateKey(log.cycleDate) === previousDate) : [];
+        const latestBest = latestLogs.reduce((best, log) => {
+          const volume = Number(log.weightKg) * log.reps;
+          return volume > best.volume ? { weightKg: Number(log.weightKg), reps: log.reps, volume } : best;
+        }, { weightKg: 0, reps: 0, volume: 0 });
+        const previousBest = previousLogs.reduce((best, log) => {
+          const volume = Number(log.weightKg) * log.reps;
+          return volume > best.volume ? { weightKg: Number(log.weightKg), reps: log.reps, volume } : best;
+        }, { weightKg: 0, reps: 0, volume: 0 });
+
+        return serializeTrendRecord({
+          exerciseId: exercise.id,
+          exerciseName: exercise.name,
+          latestDate,
+          latestWeightKg: latestBest.weightKg,
+          latestReps: latestBest.reps,
+          previousWeightKg: previousDate ? previousBest.weightKg : null,
+          previousReps: previousDate ? previousBest.reps : null
+        });
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((a, b) => a.latestDate < b.latestDate ? 1 : -1)
+      .slice(0, query.data.limit);
+
+    return { trends };
   });
 
   app.get('/api/analytics/progression', async () => {

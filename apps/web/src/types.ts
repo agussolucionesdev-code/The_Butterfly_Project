@@ -80,6 +80,35 @@ export interface VolumeAnalytics {
   byMuscle: Record<string, number>;
 }
 
+export interface AdherenceDay {
+  date: string;
+  proteinTargetMet: boolean;
+  trainingCompleted: boolean;
+  completedHabits: number;
+  totalHabits: number;
+}
+
+export interface AdherenceAnalytics {
+  days: AdherenceDay[];
+  proteinDays: number;
+  trainingDays: number;
+  habitCompletionRate: number;
+  currentTrainingStreak: number;
+}
+
+export interface ExerciseTrend {
+  exerciseId: string;
+  exerciseName: string;
+  latestDate: string;
+  latestWeightKg: number;
+  latestReps: number;
+  previousWeightKg: number | null;
+  previousReps: number | null;
+  deltaWeightKg: number | null;
+  deltaReps: number | null;
+  status: 'up' | 'flat' | 'down' | 'new';
+}
+
 export interface ProgressionSuggestion {
   id: string;
   exerciseId: string;

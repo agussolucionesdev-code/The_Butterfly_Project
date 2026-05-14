@@ -35,3 +35,25 @@ export function parseLowRep(target: string): number | null {
   const numbers = target.match(/\d+/g)?.map(Number) ?? [];
   return numbers.length ? Math.min(...numbers) : null;
 }
+
+export function summarizeAdherence(days: Array<{ date: string; proteinTargetMet: boolean; trainingCompleted: boolean; completedHabits: number; totalHabits: number }>) {
+  const proteinDays = days.filter((day) => day.proteinTargetMet).length;
+  const trainingDays = days.filter((day) => day.trainingCompleted).length;
+  const habitCompletionRate = days.length
+    ? days.reduce((total, day) => total + (day.totalHabits > 0 ? day.completedHabits / day.totalHabits : 0), 0) / days.length
+    : 0;
+
+  let currentTrainingStreak = 0;
+  for (const day of [...days].reverse()) {
+    if (!day.trainingCompleted) break;
+    currentTrainingStreak += 1;
+  }
+
+  return {
+    days,
+    proteinDays,
+    trainingDays,
+    habitCompletionRate,
+    currentTrainingStreak
+  };
+}

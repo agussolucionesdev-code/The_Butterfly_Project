@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseHighRep, summarizeVolume } from './analytics';
+import { parseHighRep, summarizeAdherence, summarizeVolume } from './analytics';
 
 describe('progression analytics', () => {
   it('extracts the high end of a rep target', () => {
@@ -19,6 +19,24 @@ describe('progression analytics', () => {
       byDay: { '2026-05-07': 1300 },
       byExercise: { Press: 800, Pushdown: 500 },
       byMuscle: { chest: 800, triceps: 900, core: 200 }
+    });
+  });
+
+  it('summarizes weekly adherence and training streak', () => {
+    expect(summarizeAdherence([
+      { date: '2026-05-08', proteinTargetMet: false, trainingCompleted: false, completedHabits: 2, totalHabits: 4 },
+      { date: '2026-05-09', proteinTargetMet: true, trainingCompleted: true, completedHabits: 4, totalHabits: 4 },
+      { date: '2026-05-10', proteinTargetMet: true, trainingCompleted: true, completedHabits: 3, totalHabits: 4 }
+    ])).toEqual({
+      days: [
+        { date: '2026-05-08', proteinTargetMet: false, trainingCompleted: false, completedHabits: 2, totalHabits: 4 },
+        { date: '2026-05-09', proteinTargetMet: true, trainingCompleted: true, completedHabits: 4, totalHabits: 4 },
+        { date: '2026-05-10', proteinTargetMet: true, trainingCompleted: true, completedHabits: 3, totalHabits: 4 }
+      ],
+      proteinDays: 2,
+      trainingDays: 2,
+      habitCompletionRate: (0.5 + 1 + 0.75) / 3,
+      currentTrainingStreak: 2
     });
   });
 });

@@ -1,4 +1,4 @@
-import type { BodyAnalysis, BodyMetric, CoachRecommendation, DailyChallenge, ExerciseHistory, ExerciseMetadata, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionAnalytics, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics, WorkoutSessionSummary } from './types';
+import type { AdherenceAnalytics, BodyAnalysis, BodyMetric, CoachRecommendation, DailyChallenge, ExerciseHistory, ExerciseMetadata, ExerciseTrend, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionAnalytics, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics, WorkoutSessionSummary } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
@@ -63,6 +63,14 @@ export async function getVolumeAnalytics(from?: string, to?: string): Promise<{ 
 
 export async function getProgressionSuggestions(): Promise<ProgressionAnalytics> {
   return api('/api/analytics/progression');
+}
+
+export async function getAdherenceAnalytics(days = 7): Promise<AdherenceAnalytics> {
+  return api(`/api/analytics/adherence?days=${days}`);
+}
+
+export async function getExerciseTrends(limit = 8): Promise<{ trends: ExerciseTrend[] }> {
+  return api(`/api/analytics/exercise-trends?limit=${limit}`);
 }
 
 export async function acceptProgression(id: string): Promise<{ suggestion: ProgressionSuggestion }> {
