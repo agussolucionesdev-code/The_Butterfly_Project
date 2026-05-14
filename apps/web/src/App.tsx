@@ -60,6 +60,7 @@ import {
 } from './api';
 import { useWorkoutStore } from './store/workoutStore';
 import type { AdherenceAnalytics, BodyMetric, CoachRecommendation, DailyChallenge, Exercise, ExerciseHistory, ExerciseTrend, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionSuggestion, TrainingDay, VolumeAnalytics, WorkoutSessionSummary } from './types';
+import { buildPhotoComparisons, buildProteinActionPlan } from './utils/insights';
 import { getEstimatedVolume, getWorkoutProgress, resolveCycleDate } from './utils/workout';
 
 const MUSCLE_LABELS: Record<string, string> = {
@@ -321,6 +322,8 @@ export function App() {
   const firstExerciseFocus = store.day?.exercises[0]?.metadata?.technicalCues?.[0] ?? 'Cargue peso y proteina antes de arrancar.';
   const approachLogs = store.logs.filter((log) => log.exerciseId === exercise?.id && log.setType === 'approach');
   const shouldSuggestApproach = Boolean(exercise && approachMode === 'idle' && approachLogs.length === 0 && (exercise.warmup || store.exerciseIndex === 0));
+  const proteinActionPlan = useMemo(() => buildProteinActionPlan(foodItems, proteinFloorGap), [foodItems, proteinFloorGap]);
+  const photoComparisons = useMemo(() => buildPhotoComparisons(photos), [photos]);
   const approachBaseWeight = recommendedWeight ?? Number(lastEquivalentSet?.weightKg ?? history?.bestWeight ?? 0);
   const approachSuggestions = approachBaseWeight > 0
     ? [
@@ -991,7 +994,7 @@ export function App() {
             </div>
 
             <div className="surface-card p-4">
-              <h2 className="font-mono text-volt mb-3 flex gap-2"><BarChart3 /> Volumen por masculo</h2>
+              <h2 className="font-mono text-volt mb-3 flex gap-2"><BarChart3 /> Volumen por músculo</h2>
               {topEntries(volume?.byMuscle ?? {}).map(([muscle, value]) => (
                 <div key={muscle} className="mb-3">
                   <div className="flex justify-between text-sm"><span>{muscleName(muscle)}</span><span>{value.toFixed(0)} kg</span></div>
@@ -1092,6 +1095,32 @@ export function App() {
                   </button>
                 ))}
               </div>
+              <div className="mt-5 rounded-2xl border border-volt/20 bg-volt/5 p-4">
+                <p className="section-label mb-2">Cómo cerrar la proteína hoy</p>
+                {proteinActionPlan.length ? (
+                  <div className="grid gap-3">
+                    {proteinActionPlan.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="metric text-left"
+                        onClick={() => {
+                          setNutritionFood(item.name);
+                          setNutritionProtein(String(item.proteinTotal));
+                          setNutritionCalories(String(item.caloriesTotal));
+                          setNutritionMeal('Cena');
+                        }}
+                      >
+                        <span>{item.summary}</span>
+                        <strong>{item.proteinTotal} g proteína</strong>
+                        <p className="mt-2 text-xs text-steel">{item.caloriesTotal} kcal aproximadas</p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-steel">Ya estás en rango. Ahora importa sostener calidad y calorías.</p>
+                )}
+              </div>
             </aside>
           </section>
         )}
@@ -1152,6 +1181,37 @@ export function App() {
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
+              {photoComparisons.length > 0 && (
+                <article className="surface-card p-4 md:col-span-2">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="section-label">Comparación visual útil</p>
+                      <p className="mt-2 text-sm text-steel">No es decoración: sirve para ver si los focos musculares se están repitiendo en el tiempo.</p>
+                    </div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-steel">Seguimiento persistente</p>
+                  </div>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                    {photoComparisons.map((comparison) => (
+                      <div key={comparison.angle} className="rounded-2xl border border-charcoal bg-obsidian/70 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <strong className="text-white capitalize">{comparison.angle}</strong>
+                          <span className="text-xs text-steel">{comparison.daysBetween} días</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <img src={comparison.first.imageUrl} alt={`${comparison.angle} inicial`} className="h-36 w-full rounded-md object-cover" />
+                          <img src={comparison.latest.imageUrl} alt={`${comparison.angle} actual`} className="h-36 w-full rounded-md object-cover" />
+                        </div>
+                        <p className="mt-3 text-sm text-steel">{comparison.latestSummary}</p>
+                        <p className="mt-3 text-xs text-steel">
+                          {comparison.repeatedFocusAreas.length
+                            ? `Focos repetidos: ${comparison.repeatedFocusAreas.join(', ')}.`
+                            : 'No se repiten focos anteriores con claridad.'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              )}
               {photos.length ? photos.map((photo) => (
                 <article key={photo.id} className="surface-card overflow-hidden">
                   <img src={photo.imageUrl} alt={`Foto ${photo.angle}`} className="h-72 w-full object-cover" />
