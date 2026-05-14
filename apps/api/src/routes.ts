@@ -184,6 +184,21 @@ function serializePhoto(photo: { date: Date; analyses?: unknown[] } & Record<str
   };
 }
 
+function serializeSessionSummary(
+  session: null | ({ cycleDate: Date; completedAt?: Date | null; status: string } & Record<string, unknown>),
+  completedWorkingSets: number,
+  totalWorkingSets: number
+) {
+  if (!session) return null;
+  return {
+    ...session,
+    cycleDate: formatDateOnly(session.cycleDate),
+    completedAt: session.completedAt ? session.completedAt.toISOString() : null,
+    completedWorkingSets,
+    totalWorkingSets
+  };
+}
+
 const BUDGET_FOODS = [
   { name: 'Huevos', serving: '2 unidades', proteinGrams: 12, calories: 140, category: 'proteina', notes: 'Barato, completo y facil de sumar al desayuno o cena.' },
   { name: 'Atun al natural', serving: '1 lata', proteinGrams: 24, calories: 120, category: 'proteina', notes: 'Alta proteina con pocas calorias; ideal cuando falta llegar al rango.' },
@@ -249,6 +264,70 @@ async function getPlanDays(includeInactive = false) {
   });
 
   return days.map(serializeTrainingDay);
+}
+
+async function getPlannedWorkingSetCount(cycleDay: number) {
+  const day = await prisma.trainingDay.findUnique({
+    where: { cycleDay },
+    include: { exercises: { where: { active: true }, select: { sets: true } } }
+  });
+
+  return day?.exercises.reduce((total, exercise) => total + exercise.sets, 0) ?? 0;
+}
+
+async function ensureSessionForDay(cycleDay: number, cycleDate: Date) {
+  return prisma.workoutSession.upsert({
+    where: { cycleDay_cycleDate: { cycleDay, cycleDate } },
+    update: { status: 'active', completedAt: null },
+    create: { cycleDay, cycleDate, status: 'active' }
+  });
+}
+
+async function syncDerivedDayState(cycleDay: number, cycleDate: Date) {
+  await ensureHabitGoals();
+
+  const [totalWorkingSets, completedWorkingSets, proteinLogs, existingSession] = await Promise.all([
+    getPlannedWorkingSetCount(cycleDay),
+    prisma.setLog.count({ where: { cycleDay, cycleDate, setType: 'working' } }),
+    prisma.nutritionLog.findMany({ where: { date: cycleDate } }),
+    prisma.workoutSession.findUnique({ where: { cycleDay_cycleDate: { cycleDay, cycleDate } } })
+  ]);
+
+  const proteinTotal = proteinLogs.reduce((total, log) => total + Number(log.proteinGrams), 0);
+  await prisma.habitLog.upsert({
+    where: { goalKey_date: { goalKey: 'protein', date: cycleDate } },
+    update: { completed: proteinTotal >= 160, value: `${proteinTotal}` },
+    create: { goalKey: 'protein', date: cycleDate, completed: proteinTotal >= 160, value: `${proteinTotal}` }
+  });
+
+  if (totalWorkingSets > 0) {
+    await prisma.habitLog.upsert({
+      where: { goalKey_date: { goalKey: 'training', date: cycleDate } },
+      update: { completed: completedWorkingSets >= totalWorkingSets, value: `${completedWorkingSets}/${totalWorkingSets}` },
+      create: { goalKey: 'training', date: cycleDate, completed: completedWorkingSets >= totalWorkingSets, value: `${completedWorkingSets}/${totalWorkingSets}` }
+    });
+  }
+
+  if (!existingSession && completedWorkingSets === 0) {
+    return { session: null, completedWorkingSets, totalWorkingSets };
+  }
+
+  const session = existingSession ?? await ensureSessionForDay(cycleDay, cycleDate);
+  const completed = totalWorkingSets > 0 && completedWorkingSets >= totalWorkingSets;
+  const updatedSession = await prisma.workoutSession.update({
+    where: { id: session.id },
+    data: {
+      status: completed ? 'completed' : 'active',
+      completedAt: completed ? new Date() : null
+    }
+  });
+
+  return { session: updatedSession, completedWorkingSets, totalWorkingSets };
+}
+
+async function getSessionSummary(cycleDay: number, cycleDate: Date) {
+  const summary = await syncDerivedDayState(cycleDay, cycleDate);
+  return serializeSessionSummary(summary.session, summary.completedWorkingSets, summary.totalWorkingSets);
 }
 
 async function syncExerciseProgression(exerciseId: string) {
@@ -344,7 +423,7 @@ function buildDailyChallenge(date: Date, cycleDay: number) {
 function buildRuleCoachMessage(
   exercise: ExerciseWithMetadata | null,
   latestApplied: Array<Record<string, unknown>>,
-  context: { proteinTotal?: number; completedHabits?: number; totalHabits?: number } = {}
+  context: { proteinTotal?: number; completedHabits?: number; totalHabits?: number; completedWorkingSets?: number; totalWorkingSets?: number; sessionStatus?: string | null } = {}
 ) {
   const proteinStatus = context.proteinTotal == null
     ? 'Todavía no cargaste proteína hoy.'
@@ -354,11 +433,14 @@ function buildRuleCoachMessage(
   const habitStatus = context.totalHabits
     ? `Hábitos: ${context.completedHabits ?? 0}/${context.totalHabits} cumplidos.`
     : 'Hábitos todavía sin datos.';
+  const sessionStatus = context.totalWorkingSets
+    ? `Sesión: ${context.completedWorkingSets ?? 0}/${context.totalWorkingSets} sets efectivos${context.sessionStatus === 'completed' ? ' completada' : ''}.`
+    : 'Sesión todavía sin iniciar.';
 
   if (!exercise) {
     return {
       title: 'Día de recuperación inteligente',
-      message: `Hoy no hay ejercicio activo. ${proteinStatus} ${habitStatus}`,
+      message: `Hoy no hay ejercicio activo. ${proteinStatus} ${habitStatus} ${sessionStatus}`,
       reason: 'El día actual no tiene series efectivas programadas.',
       action: 'Cargá peso/proteína, cumplí hábitos, caminá suave y protegé el sueño.'
     };
@@ -370,7 +452,7 @@ function buildRuleCoachMessage(
 
   return {
     title: `Objetivo de hoy: ${exercise.name}`,
-    message: `Usá ${target}, buscá ${repGoal}, mantené excéntrica controlada y frená si aparece dolor o compensación. ${proteinStatus}`,
+    message: `Usá ${target}, buscá ${repGoal}, mantené excéntrica controlada y frená si aparece dolor o compensación. ${proteinStatus} ${sessionStatus}`,
     reason: latestForExercise?.reason as string ?? exercise.lastProgressionReason as string ?? 'No hay una progresión reciente suficiente; hoy consolidamos técnica y rango.',
     action: latestForExercise?.action as string ?? exercise.lastProgressionAction as string ?? 'Si completás el rango alto con RIR 1-2 y técnica limpia, la próxima sesión subimos estímulo.'
   };
@@ -378,16 +460,21 @@ function buildRuleCoachMessage(
 
 async function getDailyCoachContext(cycleDate: Date) {
   await ensureHabitGoals();
-  const [nutritionLogs, habitGoals, habitLogs] = await Promise.all([
+  const cycleDay = getCycleDay();
+  const [nutritionLogs, habitGoals, habitLogs, session] = await Promise.all([
     prisma.nutritionLog.findMany({ where: { date: cycleDate } }),
     prisma.habitGoal.findMany({ where: { active: true } }),
-    prisma.habitLog.findMany({ where: { date: cycleDate } })
+    prisma.habitLog.findMany({ where: { date: cycleDate } }),
+    getSessionSummary(cycleDay, cycleDate)
   ]);
 
   return {
     proteinTotal: nutritionLogs.reduce((total, log) => total + Number(log.proteinGrams), 0),
     completedHabits: habitLogs.filter((log) => log.completed).length,
-    totalHabits: habitGoals.length
+    totalHabits: habitGoals.length,
+    completedWorkingSets: session?.completedWorkingSets ?? 0,
+    totalWorkingSets: session?.totalWorkingSets ?? 0,
+    sessionStatus: session?.status ?? null
   };
 }
 
@@ -477,16 +564,20 @@ export async function registerRoutes(app: FastifyInstance) {
     if (exercise.trainingDay.cycleDay !== input.cycleDay) return reply.code(400).send({ message: 'El ejercicio no pertenece a ese día.' });
     if (input.setType === 'working' && input.setNumber > exercise.sets) return reply.code(400).send({ message: 'Ese set excede la cantidad planificada.' });
 
+    const cycleDate = parseDateOnly(input.cycleDate);
+    const session = await ensureSessionForDay(input.cycleDay, cycleDate);
+
     const log = await prisma.setLog.upsert({
       where: {
         exerciseId_cycleDate_setType_setNumber: {
           exerciseId: input.exerciseId,
-          cycleDate: parseDateOnly(input.cycleDate),
+          cycleDate,
           setType: input.setType,
           setNumber: input.setNumber
         }
       },
       update: {
+        sessionId: session.id,
         setType: input.setType,
         approachOrder: input.approachOrder,
         weightKg: input.weightKg,
@@ -504,8 +595,9 @@ export async function registerRoutes(app: FastifyInstance) {
       },
       create: {
         exerciseId: input.exerciseId,
+        sessionId: session.id,
         cycleDay: input.cycleDay,
-        cycleDate: parseDateOnly(input.cycleDate),
+        cycleDate,
         setNumber: input.setNumber,
         setType: input.setType,
         approachOrder: input.approachOrder,
@@ -524,6 +616,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
 
     if (input.setType === 'working') await syncExerciseProgression(input.exerciseId);
+    await syncDerivedDayState(input.cycleDay, cycleDate);
 
     const next = input.setType === 'approach'
       ? { type: 'approach-saved', exerciseId: exercise.id, setNumber: input.setNumber }
@@ -556,19 +649,39 @@ export async function registerRoutes(app: FastifyInstance) {
       where: { exerciseId: { in: exerciseIds }, evaluatedCycleDate: cycleDate }
     });
 
+    await prisma.workoutSession.deleteMany({
+      where: { cycleDay: parsed.data.cycleDay, cycleDate }
+    });
+
+    await syncDerivedDayState(parsed.data.cycleDay, cycleDate);
+
     return { ok: true, deletedLogs: deletedLogs.count };
+  });
+
+  app.get('/api/sessions', async (request, reply) => {
+    const parsed = z.object({
+      cycleDay: z.coerce.number().int().min(1).max(7),
+      cycleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+    }).safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ message: 'Consulta de sesión inválida.' });
+
+    const session = await getSessionSummary(parsed.data.cycleDay, parseDateOnly(parsed.data.cycleDate));
+    return { session };
   });
 
   app.post('/api/sessions/start', async (request, reply) => {
     const parsed = sessionSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: 'Sesión inválida.' });
     if (isFutureCycleDay(parsed.data.cycleDay)) return reply.code(403).send({ message: 'Los días futuros están bloqueados.' });
+    const cycleDate = parseDateOnly(parsed.data.cycleDate);
     const session = await prisma.workoutSession.upsert({
-      where: { cycleDay_cycleDate: { cycleDay: parsed.data.cycleDay, cycleDate: parseDateOnly(parsed.data.cycleDate) } },
-      update: { status: 'active', notes: parsed.data.notes },
-      create: { cycleDay: parsed.data.cycleDay, cycleDate: parseDateOnly(parsed.data.cycleDate), notes: parsed.data.notes }
+      where: { cycleDay_cycleDate: { cycleDay: parsed.data.cycleDay, cycleDate } },
+      update: { status: 'active', notes: parsed.data.notes, completedAt: null },
+      create: { cycleDay: parsed.data.cycleDay, cycleDate, notes: parsed.data.notes }
     });
-    return { session };
+    const totalWorkingSets = await getPlannedWorkingSetCount(parsed.data.cycleDay);
+    const completedWorkingSets = await prisma.setLog.count({ where: { cycleDay: parsed.data.cycleDay, cycleDate, setType: 'working' } });
+    return { session: serializeSessionSummary(session, completedWorkingSets, totalWorkingSets) };
   });
 
   app.post('/api/sessions/reset', async (request, reply) => {
@@ -577,6 +690,8 @@ export async function registerRoutes(app: FastifyInstance) {
     const cycleDate = parseDateOnly(parsed.data.cycleDate);
     const deleted = await prisma.setLog.deleteMany({ where: { cycleDay: parsed.data.cycleDay, cycleDate } });
     await prisma.workoutSession.deleteMany({ where: { cycleDay: parsed.data.cycleDay, cycleDate } });
+    await prisma.progressionSuggestion.deleteMany({ where: { evaluatedCycleDate: cycleDate, exercise: { trainingDay: { cycleDay: parsed.data.cycleDay } } } });
+    await syncDerivedDayState(parsed.data.cycleDay, cycleDate);
     return { ok: true, deletedLogs: deleted.count };
   });
 
@@ -621,10 +736,26 @@ export async function registerRoutes(app: FastifyInstance) {
     await syncAllProgressions();
     const cycleDay = getCycleDay();
     const cycleDate = parseDateOnly(formatDateOnly(new Date()));
+    const day = await prisma.trainingDay.findUnique({
+      where: { cycleDay },
+      include: { exercises: { where: { active: true }, include: { metadata: true }, orderBy: { order: 'asc' } } }
+    });
     const latestApplied = await prisma.progressionSuggestion.findMany({ where: { status: 'accepted' }, orderBy: [{ resolvedAt: 'desc' }, { createdAt: 'desc' }], take: 12 });
+    const exercise = day?.exercises[0] ? (serializeExercise(day.exercises[0]) as ExerciseWithMetadata) : null;
     const context = await getDailyCoachContext(cycleDate);
-    const recommendation = buildRuleCoachMessage(null, latestApplied, context);
-    const saved = await prisma.coachRecommendation.create({ data: { cycleDay, cycleDate, ...recommendation, title: 'Coach recalculado' } });
+    const recommendation = buildRuleCoachMessage(exercise, latestApplied, context);
+    const existing = await prisma.coachRecommendation.findFirst({
+      where: { cycleDate, cycleDay, scope: 'daily', status: 'active' },
+      orderBy: { createdAt: 'desc' }
+    });
+    const saved = existing
+      ? await prisma.coachRecommendation.update({
+          where: { id: existing.id },
+          data: { exerciseId: typeof exercise?.id === 'string' ? exercise.id : undefined, ...recommendation, title: 'Coach recalculado' }
+        })
+      : await prisma.coachRecommendation.create({
+          data: { cycleDay, cycleDate, exerciseId: typeof exercise?.id === 'string' ? exercise.id : undefined, ...recommendation, title: 'Coach recalculado' }
+        });
     return { recommendation: saved };
   });
 
@@ -720,6 +851,17 @@ export async function registerRoutes(app: FastifyInstance) {
       where: { date_category: { date, category: suggested.category } },
       update: {},
       create: { date, ...suggested }
+    });
+    return { challenge: { ...challenge, date: formatDateOnly(challenge.date) } };
+  });
+
+  app.post('/api/challenges/:id/complete', async (request, reply) => {
+    const params = z.object({ id: z.string() }).safeParse(request.params);
+    const parsed = z.object({ completed: z.boolean() }).safeParse(request.body);
+    if (!params.success || !parsed.success) return reply.code(400).send({ message: 'Challenge inválido.' });
+    const challenge = await prisma.dailyChallenge.update({
+      where: { id: params.data.id },
+      data: { completed: parsed.data.completed }
     });
     return { challenge: { ...challenge, date: formatDateOnly(challenge.date) } };
   });

@@ -190,3 +190,15 @@ export interface DailyChallenge {
   category: string;
   completed: boolean;
 }
+
+export interface WorkoutSessionSummary {
+  id: string;
+  cycleDay: number;
+  cycleDate: string;
+  status: 'active' | 'completed';
+  startedAt: string;
+  completedAt?: string | null;
+  notes?: string | null;
+  completedWorkingSets: number;
+  totalWorkingSets: number;
+}

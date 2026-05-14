@@ -28,6 +28,7 @@ import {
   acceptProgression,
   analyzePhoto,
   checkHabit,
+  completeChallenge,
   getActivePlan,
   getBodyMetrics,
   getChallengeToday,
@@ -39,21 +40,24 @@ import {
   getNutritionToday,
   getPhotos,
   getProgressionSuggestions,
+  getSessionSummary,
   getToday,
   getVolumeAnalytics,
   recalculateCoach,
   rejectProgression,
   resetDayLogs,
   resetPlanToTemplate,
+  resetSession,
   saveActivePlan,
   saveApproachSet,
   saveBodyMetric,
   saveNutritionLog,
   savePhoto,
-  saveSet
+  saveSet,
+  startSession
 } from './api';
 import { useWorkoutStore } from './store/workoutStore';
-import type { BodyMetric, CoachRecommendation, DailyChallenge, Exercise, ExerciseHistory, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionSuggestion, TrainingDay, VolumeAnalytics } from './types';
+import type { BodyMetric, CoachRecommendation, DailyChallenge, Exercise, ExerciseHistory, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionSuggestion, TrainingDay, VolumeAnalytics, WorkoutSessionSummary } from './types';
 import { getEstimatedVolume, getWorkoutProgress, resolveCycleDate } from './utils/workout';
 
 const MUSCLE_LABELS: Record<string, string> = {
@@ -247,6 +251,7 @@ export function App() {
   const [planDays, setPlanDays] = useState<TrainingDay[]>([]);
   const [planSaving, setPlanSaving] = useState(false);
   const [coachRecommendation, setCoachRecommendation] = useState<CoachRecommendation | null>(null);
+  const [session, setSession] = useState<WorkoutSessionSummary | null>(null);
   const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>([]);
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [nutritionTotals, setNutritionTotals] = useState({ proteinTotal: 0, caloriesTotal: 0, remainingProtein: 160 });
@@ -289,6 +294,11 @@ export function App() {
   const proteinFloorGap = Math.max(0, 160 - proteinToday);
   const proteinTopGap = Math.max(0, 175 - proteinToday);
   const todayVolume = volume?.byDay?.[store.cycleDate] ?? 0;
+  const completedHabitsCount = habits.logs.filter((log) => log.completed).length;
+  const activeHabitsCount = habits.goals.length;
+  const sessionCompleted = session?.status === 'completed';
+  const sessionStarted = Boolean(session);
+  const sessionProgressLabel = session ? `${session.completedWorkingSets}/${session.totalWorkingSets}` : 'Sin iniciar';
   const nextCoachCue = exercise?.metadata?.technicalCues?.[0] ?? 'Mantene la tecnica estable.';
   const nextCoachMistake = exercise?.metadata?.commonMistakes?.[0] ?? 'No compenses el patron por cargar de mas.';
   const firstExerciseFocus = store.day?.exercises[0]?.metadata?.technicalCues?.[0] ?? 'Cargue peso y proteina antes de arrancar.';
@@ -342,9 +352,28 @@ export function App() {
     setChallenge(challengeResponse.challenge);
   }
 
+  async function refreshSessionSummary(cycleDay = store.cycleDay, cycleDate = store.cycleDate) {
+    if (!cycleDay || !cycleDate) {
+      setSession(null);
+      return null;
+    }
+
+    const response = await getSessionSummary({ cycleDay, cycleDate });
+    setSession(response.session);
+    return response.session;
+  }
+
+  async function ensureSessionStarted() {
+    const response = await startSession({ cycleDay: store.cycleDay, cycleDate: store.cycleDate });
+    setSession(response.session);
+    return response.session;
+  }
+
   async function refreshCoachNow(message = 'Coach recalculado con tus datos actuales.') {
     const response = await recalculateCoach();
     setCoachRecommendation(response.recommendation);
+    await refreshSessionSummary();
+    await refreshLifeData();
     setStatusNotice(message);
   }
 
@@ -363,6 +392,8 @@ export function App() {
     setCurrentCycleDay(today.cycleDay);
     setCurrentCycleDate(today.cycleDate);
     setSelectedCycleDay(nextCycleDay);
+    const sessionResponse = await getSessionSummary({ cycleDay: nextCycleDay, cycleDate: targetDate });
+    setSession(sessionResponse.session);
   }
 
   useEffect(() => {
@@ -455,6 +486,7 @@ export function App() {
     setError('');
     setSaving(true);
     try {
+      if (!sessionStarted) await ensureSessionStarted();
       const result = await saveSet({
         exerciseId: exercise.id,
         cycleDay: store.cycleDay,
@@ -479,6 +511,8 @@ export function App() {
       setTechniqueStatus('clean');
       setNotes('');
       await refreshCoachData(exercise);
+      await refreshSessionSummary();
+      await refreshLifeData();
       setStatusNotice(result.restSeconds > 0 ? 'Set guardado. Arranca el descanso.' : 'Set guardado. Seguis sin descanso.');
 
       if (result.restSeconds > 0) store.startTimer(result.restSeconds);
@@ -503,6 +537,7 @@ export function App() {
     setSaving(true);
     setError('');
     try {
+      if (!sessionStarted) await ensureSessionStarted();
       const result = await saveApproachSet({
         exerciseId: exercise.id,
         cycleDay: store.cycleDay,
@@ -520,6 +555,7 @@ export function App() {
       setApproachNotes('');
       setApproachPain('0');
       setApproachMode('active');
+      await refreshSessionSummary();
       setStatusNotice('Aproximacion guardada. No cuenta para volumen ni progresion.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No pude guardar la aproximacion.');
@@ -567,6 +603,13 @@ export function App() {
     await refreshCoachNow(completed ? 'Habito cumplido. Coach actualizado.' : 'Habito desmarcado. Coach actualizado.');
   }
 
+  async function toggleChallengeCompletion() {
+    if (!challenge) return;
+    const response = await completeChallenge(challenge.id, !challenge.completed);
+    setChallenge(response.challenge);
+    setStatusNotice(response.challenge.completed ? 'Reto diario marcado como cumplido.' : 'Reto diario vuelto a pendiente.');
+  }
+
   async function handlePhotoFile(file: File | null) {
     if (!file) return;
     const reader = new FileReader();
@@ -599,7 +642,7 @@ export function App() {
     setError('');
 
     try {
-      await resetDayLogs({ cycleDay: viewedCycleDay, cycleDate: store.cycleDate });
+      await resetSession({ cycleDay: viewedCycleDay, cycleDate: store.cycleDate });
       setWeightKg('');
       setReps('');
       setRir('');
@@ -613,6 +656,8 @@ export function App() {
       setApproachNotes('');
       await loadWorkoutForDay(viewedCycleDay);
       await refreshCoachData();
+      await refreshLifeData();
+      setSession(null);
       setActiveTab('flow');
       setStatusNotice('Sesion reiniciada desde cero.');
     } catch (err) {
@@ -819,7 +864,7 @@ export function App() {
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="metric"><span>Sets pendientes</span><strong>{remainingSets}</strong><p className="mt-2 text-xs text-steel">{store.completed ? 'La sesion ya quedo cerrada.' : `Te espera ${exercise?.name ?? 'el proximo ejercicio'}.`}</p></div>
                 <div className="metric"><span>Foco tecnico inicial</span><strong className="text-base">{firstExerciseFocus}</strong><p className="mt-2 text-xs text-steel">Si no cargaste metricas hoy, hacelo antes de arrancar.</p></div>
-                <div className="metric"><span>Modo actual</span><strong>{isViewingToday ? 'Entrenando en vivo' : `Historial dia ${viewedCycleDay}`}</strong></div>
+                <div className="metric"><span>Estado de sesion</span><strong>{sessionCompleted ? 'Completada' : sessionStarted ? 'Activa' : 'Sin iniciar'}</strong><p className="mt-2 text-xs text-steel">{sessionProgressLabel} sets efectivos registrados.</p></div>
                 <div className="metric"><span>Proxima prioridad</span><strong>{exercise?.name ?? nextExerciseName}</strong><p className="mt-2 text-xs text-steel">{nextCoachCue}</p></div>
               </div>
             </div>
@@ -829,6 +874,27 @@ export function App() {
               <label className="field">Proteina<input value={metricProtein} onChange={(e) => setMetricProtein(e.target.value)} type="number" /></label>
               <button className="btn-primary"><Save size={16} /> Guardar hoy</button>
             </form>
+
+            <div className="surface-card p-4">
+              <p className="section-label mb-3">Adherencia de hoy</p>
+              <p className="text-white font-mono text-2xl">{completedHabitsCount}/{activeHabitsCount}</p>
+              <p className="mt-2 text-xs text-steel">Proteina y entrenamiento se sincronizan solos cuando cargás datos reales.</p>
+            </div>
+
+            <div className="surface-card p-4 md:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="section-label mb-2">Reto del dia</p>
+                  <p className="text-white font-medium">{challenge?.title ?? 'Sin reto cargado'}</p>
+                  <p className="mt-2 text-sm text-steel">{challenge?.description ?? 'Todavia no hay reto generado.'}</p>
+                </div>
+                {challenge && (
+                  <button type="button" className={challenge.completed ? 'btn-secondary' : 'btn-primary'} onClick={() => void toggleChallengeCompletion()}>
+                    {challenge.completed ? 'Marcar pendiente' : 'Marcar cumplido'}
+                  </button>
+                )}
+              </div>
+            </div>
 
             <div className="surface-card p-4">
               <p className="section-label mb-3">Musculos mas cargados</p>
@@ -975,6 +1041,11 @@ export function App() {
               <h3 className="font-mono text-volt flex gap-2"><Dumbbell /> Reto de hoy</h3>
               <p className="mt-4 text-xl font-semibold">{challenge?.title ?? 'Sin reto cargado'}</p>
               <p className="mt-2 text-steel">{challenge?.description ?? 'Cargá datos para generar un reto diario.'}</p>
+              {challenge && (
+                <button type="button" className={`mt-4 ${challenge.completed ? 'btn-secondary' : 'btn-primary'}`} onClick={() => void toggleChallengeCompletion()}>
+                  {challenge.completed ? 'Pasar a pendiente' : 'Lo cumpli'}
+                </button>
+              )}
               {coachRecommendation && (
                 <div className="coach-banner mt-5">
                   <p className="section-label">Coach</p>
@@ -1093,6 +1164,18 @@ export function App() {
                 {exercise.warmup && <span className="status-pill">Activacion incluida</span>}
                 <span className="status-pill">{exercise.metadata?.kind === 'isolation' ? 'Aislado' : 'Compuesto'}</span>
                 <span className="status-pill">Volumen del dia {todayVolume.toFixed(0)} kg</span>
+                <span className="status-pill">{sessionCompleted ? 'Sesion completada' : sessionStarted ? `Sesion activa ${sessionProgressLabel}` : 'Sesion sin iniciar'}</span>
+              </div>
+
+              <div className="coach-banner mt-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="section-label mb-2">Sesion del dia</p>
+                    <p className="text-white">{sessionCompleted ? 'Ya cerraste todos los sets efectivos del dia.' : sessionStarted ? `Llevas ${sessionProgressLabel} sets efectivos.` : 'Todavia no iniciaste formalmente la sesion.'}</p>
+                    <p className="mt-2 text-sm text-steel">{isViewingToday ? 'Cuando guardes el primer set, la sesion queda persistida en backend.' : 'Estas viendo una fecha historica; la sesion no se puede reabrir desde aca.'}</p>
+                  </div>
+                  {isViewingToday && !sessionStarted && <button type="button" className="btn-tertiary" onClick={() => void ensureSessionStarted()}>Iniciar sesion</button>}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 mt-5 text-sm lg:grid-cols-3">
@@ -1206,7 +1289,9 @@ export function App() {
                   <div className="metric"><span>Sets pendientes</span><strong>{remainingSets}</strong></div>
                   <div className="metric"><span>Proteina faltante</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap} g` : '0 g'}</strong></div>
                   <div className="metric"><span>Volumen acumulado</span><strong>{estimatedVolume.toFixed(0)} kg</strong></div>
+                  <div className="metric"><span>Habitos del dia</span><strong>{completedHabitsCount}/{activeHabitsCount}</strong></div>
                   <div className="metric"><span>Proximo paso</span><strong>{store.setNumber < exercise.sets ? `Repeti ${exercise.name}` : nextExerciseName}</strong></div>
+                  <div className="metric"><span>Estado de sesion</span><strong>{sessionCompleted ? 'Completa' : sessionStarted ? sessionProgressLabel : 'Sin iniciar'}</strong></div>
                 </div>
               </div>
               <AnatomyMap exercise={exercise} />

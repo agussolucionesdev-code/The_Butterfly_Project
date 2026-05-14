@@ -1,4 +1,4 @@
-import type { BodyAnalysis, BodyMetric, CoachRecommendation, DailyChallenge, ExerciseHistory, ExerciseMetadata, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionAnalytics, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics } from './types';
+import type { BodyAnalysis, BodyMetric, CoachRecommendation, DailyChallenge, ExerciseHistory, ExerciseMetadata, FoodItem, HabitGoal, HabitLog, NutritionLog, ProgressPhoto, ProgressionAnalytics, ProgressionSuggestion, SetLog, TrainingDay, VolumeAnalytics, WorkoutSessionSummary } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
@@ -96,8 +96,17 @@ export async function saveApproachSet(input: Parameters<typeof saveSet>[0] & { a
   return api('/api/logs/approach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...input, setType: 'approach' }) });
 }
 
-export async function startSession(input: { cycleDay: number; cycleDate: string; notes?: string }): Promise<{ session: unknown }> {
+export async function startSession(input: { cycleDay: number; cycleDate: string; notes?: string }): Promise<{ session: WorkoutSessionSummary }> {
   return api('/api/sessions/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+}
+
+export async function getSessionSummary(input: { cycleDay: number; cycleDate: string }): Promise<{ session: WorkoutSessionSummary | null }> {
+  const params = new URLSearchParams({ cycleDay: String(input.cycleDay), cycleDate: input.cycleDate });
+  return api(`/api/sessions?${params.toString()}`);
+}
+
+export async function resetSession(input: { cycleDay: number; cycleDate: string }): Promise<{ ok: true; deletedLogs: number }> {
+  return api('/api/sessions/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
 }
 
 export async function getCoachToday(): Promise<{ recommendation: CoachRecommendation }> {
@@ -138,4 +147,8 @@ export async function analyzePhoto(id: string): Promise<{ analysis: BodyAnalysis
 
 export async function getChallengeToday(): Promise<{ challenge: DailyChallenge }> {
   return api('/api/challenges/today');
+}
+
+export async function completeChallenge(id: string, completed: boolean): Promise<{ challenge: DailyChallenge }> {
+  return api(`/api/challenges/${id}/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }) });
 }
