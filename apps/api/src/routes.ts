@@ -341,13 +341,26 @@ function buildDailyChallenge(date: Date, cycleDay: number) {
   return variants[(cycleDay + day.length) % variants.length];
 }
 
-function buildRuleCoachMessage(exercise: ExerciseWithMetadata | null, latestApplied: Array<Record<string, unknown>>) {
+function buildRuleCoachMessage(
+  exercise: ExerciseWithMetadata | null,
+  latestApplied: Array<Record<string, unknown>>,
+  context: { proteinTotal?: number; completedHabits?: number; totalHabits?: number } = {}
+) {
+  const proteinStatus = context.proteinTotal == null
+    ? 'Todavía no cargaste proteína hoy.'
+    : context.proteinTotal >= 160
+      ? `Ya cargaste ${context.proteinTotal} g de proteína: mantené calidad y no fuerces comida basura.`
+      : `Vas en ${context.proteinTotal} g de proteína: te faltan ${Math.max(0, 160 - context.proteinTotal)} g para el piso.`;
+  const habitStatus = context.totalHabits
+    ? `Hábitos: ${context.completedHabits ?? 0}/${context.totalHabits} cumplidos.`
+    : 'Hábitos todavía sin datos.';
+
   if (!exercise) {
     return {
       title: 'Día de recuperación inteligente',
-      message: 'Hoy no hay ejercicio activo. Mantené proteína, pasos suaves y sueño para llegar fuerte a la próxima sesión.',
+      message: `Hoy no hay ejercicio activo. ${proteinStatus} ${habitStatus}`,
       reason: 'El día actual no tiene series efectivas programadas.',
-      action: 'Cargá peso/proteína, cumplí hábitos y evitá azúcar/alcohol.'
+      action: 'Cargá peso/proteína, cumplí hábitos, caminá suave y protegé el sueño.'
     };
   }
 
@@ -357,9 +370,24 @@ function buildRuleCoachMessage(exercise: ExerciseWithMetadata | null, latestAppl
 
   return {
     title: `Objetivo de hoy: ${exercise.name}`,
-    message: `Usá ${target}, buscá ${repGoal}, mantené excéntrica controlada y frená si aparece dolor o compensación.`,
+    message: `Usá ${target}, buscá ${repGoal}, mantené excéntrica controlada y frená si aparece dolor o compensación. ${proteinStatus}`,
     reason: latestForExercise?.reason as string ?? exercise.lastProgressionReason as string ?? 'No hay una progresión reciente suficiente; hoy consolidamos técnica y rango.',
     action: latestForExercise?.action as string ?? exercise.lastProgressionAction as string ?? 'Si completás el rango alto con RIR 1-2 y técnica limpia, la próxima sesión subimos estímulo.'
+  };
+}
+
+async function getDailyCoachContext(cycleDate: Date) {
+  await ensureHabitGoals();
+  const [nutritionLogs, habitGoals, habitLogs] = await Promise.all([
+    prisma.nutritionLog.findMany({ where: { date: cycleDate } }),
+    prisma.habitGoal.findMany({ where: { active: true } }),
+    prisma.habitLog.findMany({ where: { date: cycleDate } })
+  ]);
+
+  return {
+    proteinTotal: nutritionLogs.reduce((total, log) => total + Number(log.proteinGrams), 0),
+    completedHabits: habitLogs.filter((log) => log.completed).length,
+    totalHabits: habitGoals.length
   };
 }
 
@@ -572,10 +600,20 @@ export async function registerRoutes(app: FastifyInstance) {
     });
     const latestApplied = await prisma.progressionSuggestion.findMany({ where: { status: 'accepted' }, orderBy: [{ resolvedAt: 'desc' }, { createdAt: 'desc' }], take: 12 });
     const exercise = day?.exercises[0] ? (serializeExercise(day.exercises[0]) as ExerciseWithMetadata) : null;
-    const recommendation = buildRuleCoachMessage(exercise, latestApplied);
-    const saved = await prisma.coachRecommendation.create({
-      data: { cycleDay, cycleDate, exerciseId: typeof exercise?.id === 'string' ? exercise.id : undefined, ...recommendation }
+    const context = await getDailyCoachContext(cycleDate);
+    const recommendation = buildRuleCoachMessage(exercise, latestApplied, context);
+    const existing = await prisma.coachRecommendation.findFirst({
+      where: { cycleDate, cycleDay, scope: 'daily', status: 'active' },
+      orderBy: { createdAt: 'desc' }
     });
+    const saved = existing
+      ? await prisma.coachRecommendation.update({
+          where: { id: existing.id },
+          data: { exerciseId: typeof exercise?.id === 'string' ? exercise.id : undefined, ...recommendation }
+        })
+      : await prisma.coachRecommendation.create({
+          data: { cycleDay, cycleDate, exerciseId: typeof exercise?.id === 'string' ? exercise.id : undefined, ...recommendation }
+        });
     return { recommendation: saved };
   });
 
@@ -584,7 +622,8 @@ export async function registerRoutes(app: FastifyInstance) {
     const cycleDay = getCycleDay();
     const cycleDate = parseDateOnly(formatDateOnly(new Date()));
     const latestApplied = await prisma.progressionSuggestion.findMany({ where: { status: 'accepted' }, orderBy: [{ resolvedAt: 'desc' }, { createdAt: 'desc' }], take: 12 });
-    const recommendation = buildRuleCoachMessage(null, latestApplied);
+    const context = await getDailyCoachContext(cycleDate);
+    const recommendation = buildRuleCoachMessage(null, latestApplied, context);
     const saved = await prisma.coachRecommendation.create({ data: { cycleDay, cycleDate, ...recommendation, title: 'Coach recalculado' } });
     return { recommendation: saved };
   });
