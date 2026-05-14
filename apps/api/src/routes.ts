@@ -185,26 +185,26 @@ function serializePhoto(photo: { date: Date; analyses?: unknown[] } & Record<str
 }
 
 const BUDGET_FOODS = [
-  { name: 'Huevos', serving: '2 unidades', proteinGrams: 12, calories: 140, category: 'proteina', notes: 'Barato, completo y fácil de sumar al desayuno o cena.' },
-  { name: 'Atún al natural', serving: '1 lata', proteinGrams: 24, calories: 120, category: 'proteina', notes: 'Alta proteína con pocas calorías; ideal cuando falta llegar al rango.' },
-  { name: 'Pollo', serving: '150 g cocido', proteinGrams: 45, calories: 250, category: 'proteina', notes: 'Base sólida para volumen limpio.' },
-  { name: 'Leche', serving: '500 ml', proteinGrams: 16, calories: 250, category: 'proteina', notes: 'Útil si cuesta comer sólido.' },
+  { name: 'Huevos', serving: '2 unidades', proteinGrams: 12, calories: 140, category: 'proteina', notes: 'Barato, completo y facil de sumar al desayuno o cena.' },
+  { name: 'Atun al natural', serving: '1 lata', proteinGrams: 24, calories: 120, category: 'proteina', notes: 'Alta proteina con pocas calorias; ideal cuando falta llegar al rango.' },
+  { name: 'Pollo', serving: '150 g cocido', proteinGrams: 45, calories: 250, category: 'proteina', notes: 'Base solida para volumen limpio.' },
+  { name: 'Leche', serving: '500 ml', proteinGrams: 16, calories: 250, category: 'proteina', notes: 'Util si cuesta comer solido.' },
   { name: 'Yogur natural', serving: '250 g', proteinGrams: 12, calories: 160, category: 'proteina', notes: 'Combinable con avena y fruta.' },
-  { name: 'Lentejas', serving: '1 plato', proteinGrams: 18, calories: 330, category: 'mixto', notes: 'Proteína vegetal, carbohidratos y fibra.' },
-  { name: 'Porotos', serving: '1 plato', proteinGrams: 15, calories: 300, category: 'mixto', notes: 'Muy buen costo por caloría.' },
-  { name: 'Avena', serving: '80 g', proteinGrams: 10, calories: 310, category: 'carbohidrato', notes: 'Energía sostenida para entrenar.' },
+  { name: 'Lentejas', serving: '1 plato', proteinGrams: 18, calories: 330, category: 'mixto', notes: 'Proteina vegetal, carbohidratos y fibra.' },
+  { name: 'Porotos', serving: '1 plato', proteinGrams: 15, calories: 300, category: 'mixto', notes: 'Muy buen costo por caloria.' },
+  { name: 'Avena', serving: '80 g', proteinGrams: 10, calories: 310, category: 'carbohidrato', notes: 'Energia sostenida para entrenar.' },
   { name: 'Arroz', serving: '1 taza cocida', proteinGrams: 4, calories: 205, category: 'carbohidrato', notes: 'Combustible barato para subir de peso.' },
   { name: 'Banana', serving: '1 unidad', proteinGrams: 1, calories: 105, category: 'fruta', notes: 'Pre-entreno simple y digestivo.' },
   { name: 'Papa', serving: '300 g', proteinGrams: 6, calories: 260, category: 'carbohidrato', notes: 'Saciedad y potasio.' }
 ] as const;
 
 const DEFAULT_HABITS = [
-  { key: 'no-sugar', label: 'Sin azúcar agregada', target: 'Evitar azúcar agregada durante el día', order: 1 },
+  { key: 'no-sugar', label: 'Sin azucar agregada', target: 'Evitar azucar agregada durante el dia', order: 1 },
   { key: 'no-alcohol', label: 'Sin alcohol', target: '0 alcohol', order: 2 },
-  { key: 'protein', label: 'Proteína 160-175 g', target: 'Llegar al rango diario de proteína', order: 3 },
+  { key: 'protein', label: 'Proteina 160-175 g', target: 'Llegar al rango diario de proteina', order: 3 },
   { key: 'water', label: 'Agua', target: '2-3 litros', order: 4 },
-  { key: 'training', label: 'Entrenamiento', target: 'Completar sesión o descanso activo', order: 5 },
-  { key: 'sleep', label: 'Sueño', target: '7-9 horas', order: 6 },
+  { key: 'training', label: 'Entrenamiento', target: 'Completar sesion o descanso activo', order: 5 },
+  { key: 'sleep', label: 'Sueno', target: '7-9 horas', order: 6 },
   { key: 'mobility', label: 'Movilidad', target: '5-10 minutos', order: 7 }
 ] as const;
 
@@ -226,13 +226,13 @@ function buildMinimalMetadata(exerciseName: string) {
     referenceUrl: buildReferenceUrl(exerciseName),
     referenceLabel: 'Referencia ExRx',
     instructions: [
-      'Definí una técnica repetible antes de subir la carga.',
-      'Usá rango útil completo y controlá la excéntrica.',
-      'Frená la serie cuando empieces a compensar el patrón.'
+      'Defini una tecnica repetible antes de subir la carga.',
+      'Usa rango util completo y controla la excentrica.',
+      'Frena la serie cuando empieces a compensar el patron.'
     ],
-    commonMistakes: ['Cargar más de lo que podés controlar.', 'Acortar el rango.', 'Acelerar la bajada para sobrevivir la serie.'],
-    technicalCues: ['Misma postura en cada repetición.', 'Respiración ordenada.', 'Tensión constante.'],
-    overloadRecommendation: 'Primero consolidá técnica y rango; después subí la carga mínima posible.'
+    commonMistakes: ['Cargar mas de lo que podes controlar.', 'Acortar el rango.', 'Acelerar la bajada para sobrevivir la serie.'],
+    technicalCues: ['Misma postura en cada repeticion.', 'Respiracion ordenada.', 'Tension constante.'],
+    overloadRecommendation: 'Primero consolida tecnica y rango; despues subi la carga minima posible.'
   };
 }
 

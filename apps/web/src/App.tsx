@@ -41,6 +41,7 @@ import {
   getProgressionSuggestions,
   getToday,
   getVolumeAnalytics,
+  recalculateCoach,
   rejectProgression,
   resetDayLogs,
   resetPlanToTemplate,
@@ -284,7 +285,7 @@ export function App() {
   const recommendedReps = exercise?.plannedRepGoal ?? null;
   const videoResource = resolveVideoResource(exercise?.metadata?.videoUrl, exercise?.name ?? '');
   const remainingSets = Math.max(0, progress.totalSets - progress.completedSets);
-  const proteinToday = metricForToday?.proteinGrams ?? 0;
+  const proteinToday = nutritionTotals.proteinTotal > 0 ? nutritionTotals.proteinTotal : metricForToday?.proteinGrams ?? 0;
   const proteinFloorGap = Math.max(0, 160 - proteinToday);
   const proteinTopGap = Math.max(0, 175 - proteinToday);
   const todayVolume = volume?.byDay?.[store.cycleDate] ?? 0;
@@ -339,6 +340,12 @@ export function App() {
     setHabits({ goals: habitsResponse.goals, logs: habitsResponse.logs });
     setPhotos(photosResponse.photos);
     setChallenge(challengeResponse.challenge);
+  }
+
+  async function refreshCoachNow(message = 'Coach recalculado con tus datos actuales.') {
+    const response = await recalculateCoach();
+    setCoachRecommendation(response.recommendation);
+    setStatusNotice(message);
   }
 
   async function loadWorkoutForDay(targetCycleDay?: number) {
@@ -548,7 +555,7 @@ export function App() {
     setNutritionFood('');
     setNutritionProtein('');
     setNutritionCalories('');
-    setStatusNotice('Comida registrada.');
+    await refreshCoachNow('Comida registrada. Coach actualizado con tu proteina real.');
   }
 
   async function toggleHabit(goalKey: string, completed: boolean) {
@@ -557,6 +564,7 @@ export function App() {
       ...current,
       logs: [...current.logs.filter((log) => log.goalKey !== goalKey), response.log]
     }));
+    await refreshCoachNow(completed ? 'Habito cumplido. Coach actualizado.' : 'Habito desmarcado. Coach actualizado.');
   }
 
   async function handlePhotoFile(file: File | null) {
@@ -585,7 +593,7 @@ export function App() {
 
   async function resetCurrentSession() {
     const sessionLabel = isViewingToday ? 'la sesion de hoy' : `el dia ${viewedCycleDay}`;
-    if (!window.confirm(`Vas a borrar todos los sets guardados de ${sessionLabel} y volver a empezar desde cero. ?Continuar?`)) return;
+    if (!window.confirm(`Vas a borrar todos los sets guardados de ${sessionLabel} y volver a empezar desde cero. ¿Continuar?`)) return;
 
     setResettingDay(true);
     setError('');
@@ -842,6 +850,17 @@ export function App() {
                 </>
               ) : <p className="text-steel">Todavia no hay progresiones aplicadas. Segui registrando sets con calidad.</p>}
             </div>
+
+            <div className="coach-banner md:col-span-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="section-label mb-2">Coach diario</p>
+                  <p className="text-white">{coachRecommendation?.message ?? 'Cargá entrenamiento, proteína y hábitos para recibir una guía más precisa.'}</p>
+                  {coachRecommendation?.reason && <p className="mt-2 text-sm text-steel">{coachRecommendation.reason}</p>}
+                </div>
+                <button type="button" className="btn-tertiary" onClick={() => void refreshCoachNow()}>Recalcular coach</button>
+              </div>
+            </div>
           </section>
         )}
 
@@ -1065,7 +1084,7 @@ export function App() {
           <section className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
             <section className="surface-card p-5">
               {!isViewingToday && <div className="notice notice-warning mb-4"><AlertTriangle size={16} /> Estas mirando historial. No es el flujo vivo del dia actual.</div>}
-              <p className="section-label">Ejercicio actual ? Set {store.setNumber}/{exercise.sets}</p>
+              <p className="section-label">Ejercicio actual - Set {store.setNumber}/{exercise.sets}</p>
               <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
                 <h2 className="font-mono text-3xl text-volt">{exercise.name}</h2>
                 <div className="flex items-center gap-2 text-sm text-steel"><Clock3 size={16} /> Descanso {exercise.restSeconds}s</div>
@@ -1174,7 +1193,7 @@ export function App() {
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
-                  <button className="btn-primary disabled:opacity-40" disabled={!weightKg || !reps || saving}>{saving ? 'Guardando?' : 'Guardar set'}</button>
+                  <button className="btn-primary disabled:opacity-40" disabled={!weightKg || !reps || saving}>{saving ? 'Guardando...' : 'Guardar set'}</button>
                   <button className="btn-danger" type="button" onClick={resetCurrentSession} disabled={resettingDay}>{resettingDay ? 'Reiniciando...' : 'Reiniciar sesion del dia'}</button>
                 </div>
               </form>
@@ -1187,7 +1206,7 @@ export function App() {
                   <div className="metric"><span>Sets pendientes</span><strong>{remainingSets}</strong></div>
                   <div className="metric"><span>Proteina faltante</span><strong>{proteinFloorGap > 0 ? `${proteinFloorGap} g` : '0 g'}</strong></div>
                   <div className="metric"><span>Volumen acumulado</span><strong>{estimatedVolume.toFixed(0)} kg</strong></div>
-                  <div className="metric"><span>Pr?ximo paso</span><strong>{store.setNumber < exercise.sets ? `Repet? ${exercise.name}` : nextExerciseName}</strong></div>
+                  <div className="metric"><span>Proximo paso</span><strong>{store.setNumber < exercise.sets ? `Repeti ${exercise.name}` : nextExerciseName}</strong></div>
                 </div>
               </div>
               <AnatomyMap exercise={exercise} />
@@ -1215,7 +1234,7 @@ export function App() {
               </section>
               <section className="surface-card p-4">
                 <p className="section-label mb-3">Sigue despues</p>
-                <p className="text-white font-medium">{store.setNumber < exercise.sets ? `Repet? ${exercise.name}` : nextExerciseName}</p>
+                <p className="text-white font-medium">{store.setNumber < exercise.sets ? `Repeti ${exercise.name}` : nextExerciseName}</p>
                 <p className="text-steel text-sm mt-2">{isViewingToday ? 'Sesion actual' : `Mirando historial del dia ${viewedCycleDay}`}</p>
                 <p className="text-steel text-sm mt-1">Ultima sesion registrada: {history?.latestDate ?? 'sin datos previos'}</p>
                 {currentSuggestion && <div className="mt-3 flex gap-2"><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, true)}>Aceptar progreso</button><button className="btn-tertiary" onClick={() => resolveSuggestion(currentSuggestion.id, false)}>Posponer</button></div>}
@@ -1228,7 +1247,7 @@ export function App() {
                 )}
               </section>
               <section className="surface-card p-4">
-                <p className="section-label mb-3">Navegaci?n</p>
+                <p className="section-label mb-3">Navegacion</p>
                 <div className="grid gap-3">
                   <button className="btn-secondary" type="button" disabled={viewedCycleDay <= 1 || switchingDay} onClick={() => handleDaySelection(viewedCycleDay - 1)}><ChevronLeft size={16} /> Dia anterior</button>
                   <button className="btn-secondary" type="button" disabled={viewedCycleDay >= currentCycleDay || switchingDay} onClick={() => handleDaySelection(viewedCycleDay + 1)}><ChevronRight size={16} /> Dia siguiente</button>
